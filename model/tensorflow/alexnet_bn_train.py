@@ -17,7 +17,7 @@ dropout = 0.5 # Dropout, probability to keep units
 training_iters = 50000
 step_display = 50
 step_save = 10000
-path_save = 'alexnet_bn'
+path_save = './models/alexnet_bn'
 start_from = ''
 
 def batch_norm_layer(x, train_phase, scope_bn):
