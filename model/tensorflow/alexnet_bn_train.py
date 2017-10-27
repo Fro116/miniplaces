@@ -19,6 +19,7 @@ step_display = 50
 step_save = 10000
 path_save = './models/alexnet_bn'
 start_from = ''
+regularization_scale = 0.01
 
 def batch_norm_layer(x, train_phase, scope_bn):
     return batch_norm(x, decay=0.9, center=True, scale=True,
@@ -29,20 +30,21 @@ def batch_norm_layer(x, train_phase, scope_bn):
     scope=scope_bn)
     
 def alexnet(x, keep_dropout, train_phase):
+    regularizer = tf.contrib.layers.l2_regularizer(regularization_scale)    
     weights = {
-        'wc1': tf.Variable(tf.random_normal([11, 11, 3, 96], stddev=np.sqrt(2./(11*11*3)))),
-        'wc2': tf.Variable(tf.random_normal([5, 5, 96, 256], stddev=np.sqrt(2./(5*5*96)))),
-        'wc3': tf.Variable(tf.random_normal([3, 3, 256, 384], stddev=np.sqrt(2./(3*3*256)))),
-        'wc4': tf.Variable(tf.random_normal([3, 3, 384, 256], stddev=np.sqrt(2./(3*3*384)))),
-        'wc5': tf.Variable(tf.random_normal([3, 3, 256, 256], stddev=np.sqrt(2./(3*3*256)))),
+        'wc1': tf.get_variable('wc1', initializer = tf.random_normal([11, 11, 3, 96], stddev=np.sqrt(2./(11*11*3))), regularizer = regularizer),
+        'wc2': tf.get_variable('wc2', initializer = tf.random_normal([5, 5, 96, 256], stddev=np.sqrt(2./(5*5*96))), regularizer = regularizer),
+        'wc3': tf.get_variable('wc3', initializer = tf.random_normal([3, 3, 256, 384], stddev=np.sqrt(2./(3*3*256))), regularizer = regularizer),
+        'wc4': tf.get_variable('wc4', initializer = tf.random_normal([3, 3, 384, 256], stddev=np.sqrt(2./(3*3*384))), regularizer = regularizer),
+        'wc5': tf.get_variable('wc5', initializer = tf.random_normal([3, 3, 256, 256], stddev=np.sqrt(2./(3*3*256))), regularizer = regularizer),
 
-        'wf6': tf.Variable(tf.random_normal([7*7*256, 4096], stddev=np.sqrt(2./(7*7*256)))),
-        'wf7': tf.Variable(tf.random_normal([4096, 4096], stddev=np.sqrt(2./4096))),
-        'wo': tf.Variable(tf.random_normal([4096, 100], stddev=np.sqrt(2./4096)))
+        'wf6': tf.get_variable('wf6', initializer = tf.random_normal([7*7*256, 4096], stddev=np.sqrt(2./(7*7*256))), regularizer = regularizer),
+        'wf7': tf.get_variable('wf7', initializer = tf.random_normal([4096, 4096], stddev=np.sqrt(2./4096)), regularizer = regularizer),
+        'wo' : tf.get_variable('wf8', initializer = tf.random_normal([4096, 100], stddev=np.sqrt(2./4096)), regularizer = regularizer)
     }
 
     biases = {
-        'bo': tf.Variable(tf.ones(100))
+        'bo': tf.get_variable('bo', initializer = tf.ones(100))
     }
 
     # Conv + ReLU + Pool, 224->55->27
@@ -126,7 +128,8 @@ train_phase = tf.placeholder(tf.bool)
 logits = alexnet(x, keep_dropout, train_phase)
 
 # Define loss and optimizer
-loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits))
+regularization_loss = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits)) + regularization_loss
 train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
 # Evaluate model
@@ -160,11 +163,11 @@ with tf.Session() as sess:
             print('[%s]:' %(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
             # Calculate batch loss and accuracy on training set
-            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False}) 
+            l, acc1, acc5, reg = sess.run([loss, accuracy1, accuracy5, regularization_loss], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False}) 
             print("-Iter " + str(step) + ", Training Loss= " + \
                   "{:.6f}".format(l) + ", Accuracy Top1 = " + \
                   "{:.4f}".format(acc1) + ", Top5 = " + \
-                  "{:.4f}".format(acc5))
+                  "{:.4f}".format(acc5) + ", Regularization Loss = " + "{:.4f}".format(reg))
 
             # Calculate batch loss and accuracy on validation set
             images_batch_val, labels_batch_val = loader_val.next_batch(batch_size)    
