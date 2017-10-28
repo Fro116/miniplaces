@@ -6,10 +6,10 @@ from DataLoader import *
 
 # Dataset Parameters
 batch_size = 256
-load_size = 256
-fine_size = 224
+load_size = 128
+fine_size = 128
 c = 3
-data_mean = np.asarray([0.45834960097,0.44674252445,0.41352266842])
+data_mean = np.load("./training_mean.npy")
 
 # Training Parameters
 learning_rate = 0.001
@@ -19,7 +19,7 @@ step_display = 50
 step_save = 5000
 path_save = './models/alexnet_bn'
 start_from = ''
-regularization_scale = 0.0005
+regularization_scale = 0.
 
 def batch_norm_layer(x, train_phase, scope_bn):
     return batch_norm(x, decay=0.9, center=True, scale=True,
@@ -38,7 +38,7 @@ def alexnet(x, keep_dropout, train_phase):
         'wc4': tf.get_variable('wc4', initializer = tf.random_normal([3, 3, 384, 256], stddev=np.sqrt(2./(3*3*384))), regularizer = regularizer),
         'wc5': tf.get_variable('wc5', initializer = tf.random_normal([3, 3, 256, 256], stddev=np.sqrt(2./(3*3*256))), regularizer = regularizer),
 
-        'wf6': tf.get_variable('wf6', initializer = tf.random_normal([7*7*256, 4096], stddev=np.sqrt(2./(7*7*256))), regularizer = regularizer),
+        'wf6': tf.get_variable('wf6', initializer = tf.random_normal([4*4*256, 4096], stddev=np.sqrt(2./(7*7*256))), regularizer = regularizer),
         'wf7': tf.get_variable('wf7', initializer = tf.random_normal([4096, 4096], stddev=np.sqrt(2./4096)), regularizer = regularizer),
         'wo' : tf.get_variable('wf8', initializer = tf.random_normal([4096, 100], stddev=np.sqrt(2./4096)), regularizer = regularizer)
     }
