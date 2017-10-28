@@ -9,17 +9,17 @@ batch_size = 256
 load_size = 256
 fine_size = 224
 c = 3
-data_mean = np.asarray([0.45834960097,0.44674252445,0.41352266842])
+data_mean = DataLoader.data_mean(data_root = '../../data/images/', data_list ='../../data/train.txt')
 
 # Training Parameters
 learning_rate = 0.001
 dropout = 0.5 # Dropout, probability to keep units
 training_iters = 50000
 step_display = 50
-step_save = 10000
+step_save = 5000
 path_save = './models/alexnet_bn'
 start_from = ''
-regularization_scale = 0.01
+regularization_scale = 0.0005
 
 def batch_norm_layer(x, train_phase, scope_bn):
     return batch_norm(x, decay=0.9, center=True, scale=True,
@@ -129,7 +129,8 @@ logits = alexnet(x, keep_dropout, train_phase)
 
 # Define loss and optimizer
 regularization_loss = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
-loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits)) + regularization_loss
+evaluation_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits))
+loss = evaluation_loss + regularization_loss
 train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
 # Evaluate model
@@ -163,11 +164,13 @@ with tf.Session() as sess:
             print('[%s]:' %(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
             # Calculate batch loss and accuracy on training set
-            l, acc1, acc5, reg = sess.run([loss, accuracy1, accuracy5, regularization_loss], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False}) 
-            print("-Iter " + str(step) + ", Training Loss= " + \
-                  "{:.6f}".format(l) + ", Accuracy Top1 = " + \
-                  "{:.4f}".format(acc1) + ", Top5 = " + \
-                  "{:.4f}".format(acc5) + ", Regularization Loss = " + "{:.4f}".format(reg))
+            l, acc1, acc5, reg, eval_loss = sess.run([loss, accuracy1, accuracy5, regularization_loss, evaluation_loss], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False}) 
+            print("-Iter " + str(step) +
+                  ", Training Loss= " + "{:.6f}".format(l) +
+                  ", Accuracy Top1 = " + "{:.4f}".format(acc1) +
+                  ", Top5 = " + "{:.4f}".format(acc5) +
+                  ", Evaluation Loss = " + "{:.4f}".format(eval_loss) +
+                  ", Regularization Loss = " + "{:.4f}".format(reg))
 
             # Calculate batch loss and accuracy on validation set
             images_batch_val, labels_batch_val = loader_val.next_batch(batch_size)    
