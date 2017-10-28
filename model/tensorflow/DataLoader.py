@@ -128,18 +128,19 @@ class DataLoaderDisk(object):
     def reset(self):
         self._idx = 0
 
+    def data_mean(data_root, data_list, load_size):
+        mean = [0., 0., 0.]
+        num_images = 0
+        with open(data_list, 'r') as f:
+            for line in f:
+                path, lab =line.rstrip().split(' ')
+                im_path = os.path.join(data_root, path)
+                image = scipy.misc.imread(im_path)
+                image = scipy.misc.imresize(image, (load_size, load_size))
+                image = image.astype(np.float32)/255.
+                mean += np.sum(image, axis = (0,1))
+                num_images += 1
+                print(num_images)
+        return mean / num_images
 
-def data_mean(data_root, data_list, fine_size):
-    mean = [0., 0., 0.]
-    num_images = 0
-    with open(kdata_list, 'r') as f:
-        for line in f:
-            path, lab =line.rstrip().split(' ')
-            im_path = os.path.join(self.data_root, path)
-            image = scipy.misc.imread(self.list_im[self._idx])
-            image = scipy.misc.imresize(image, (self.load_size, self.load_size))
-            image = image.astype(np.float32)/255.
-            mean += np.sum(image, axis = (1,2))
-            num_images += 1
-    return mean / num_images
     

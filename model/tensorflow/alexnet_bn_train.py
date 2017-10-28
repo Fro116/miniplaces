@@ -9,7 +9,7 @@ batch_size = 256
 load_size = 256
 fine_size = 224
 c = 3
-data_mean = DataLoader.data_mean(data_root = '../../data/images/', data_list ='../../data/train.txt')
+data_mean = np.asarray([0.45834960097,0.44674252445,0.41352266842])
 
 # Training Parameters
 learning_rate = 0.001
