@@ -2,7 +2,7 @@ import os
 import numpy as np
 import scipy.misc
 import h5py
-np.random.seed(123)
+#np.random.seed(123)
 
 # loading data from .h5
 # class DataLoaderH5(object):
@@ -74,6 +74,8 @@ class DataLoaderDisk(object):
         self.data_mean = np.array(kwargs['data_mean'])
         self.randomize = kwargs['randomize']
         self.data_root = os.path.join(kwargs['data_root'])
+        self.first_label = int(kwargs['first_label'])
+        self.second_label = int(kwargs['second_label'])
 
         # read data info from lists
         self.list_im = []
@@ -113,7 +115,14 @@ class DataLoaderDisk(object):
                 offset_w = (self.load_size-self.fine_size)//2
 
             images_batch[i, ...] =  image[offset_h:offset_h+self.fine_size, offset_w:offset_w+self.fine_size, :]
-            labels_batch[i, ...] = self.list_lab[self._idx]
+            label = self.list_lab[self._idx]
+            if label == self.first_label:
+                label = 0
+            elif label == self.second_label:
+                label = 1
+            else:
+                label = 2
+            labels_batch[i, ...] = label
             
             self._idx += 1
             if self._idx == self.num:
