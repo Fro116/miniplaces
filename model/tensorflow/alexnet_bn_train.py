@@ -10,13 +10,13 @@ load_size = 128
 fine_size = 112
 c = 3
 data_mean = np.load("./training_mean.npy")
-experiment = 'ternary'
+experiment = 'binary'
 
 # Training Parameters
 learning_rate = 0.001
 dropout = 0.5 # Dropout, probability to keep units
-training_iters = 150
-step_display = 200
+training_iters = 500
+step_display = 50
 step_save = 5000
 path_save = './models/alexnet_bn'
 start_from = '' #'./models/xception/alexnet_bn-30000'
@@ -95,7 +95,7 @@ def alexnet(x, keep_dropout, train_phase):
     with tf.name_scope("ExitFlow"):
         e5 = down_sample(e4, keep_dropout, train_phase, str(5))
         e6 = up_sample(e5, keep_dropout, train_phase, str(6), 256)
-        e7 = up_sample(e6, keep_dropout, train_phase, str(7), 3)
+        e7 = up_sample(e6, keep_dropout, train_phase, str(7), 2)
         e7 = tf.reduce_mean(e7, axis = [1,2])        
         return e7
 
@@ -207,7 +207,7 @@ def train_network():
         print('Evaluation Finished! First Label = ' + str(first) + ', Second Label = ' + str(second) + ', Accuracy Top1 = ' + "{:.4f}".format(acc1_total) + ", Top5 = " + "{:.4f}".format(acc5_total))
 
 
-for first in range(100):
+for first in range(10):
     for second in range(first):
         # Construct dataloader
         opt_data_train = {

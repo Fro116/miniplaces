@@ -74,8 +74,8 @@ class DataLoaderDisk(object):
         self.data_mean = np.array(kwargs['data_mean'])
         self.randomize = kwargs['randomize']
         self.data_root = os.path.join(kwargs['data_root'])
-        self.first_label = int(kwargs['first_label'])
-        self.second_label = int(kwargs['second_label'])
+        first_label = int(kwargs['first_label'])
+        second_label = int(kwargs['second_label'])
 
         # read data info from lists
         self.list_im = []
@@ -83,17 +83,21 @@ class DataLoaderDisk(object):
         with open(kwargs['data_list'], 'r') as f:
             for line in f:
                 path, lab =line.rstrip().split(' ')
-                self.list_im.append(os.path.join(self.data_root, path))
-                self.list_lab.append(int(lab))
+                path = os.path.join(self.data_root, path)
+                lab = int(lab)
+                if lab == first_label:
+                    self.list_im.append(path)
+                    self.list_lab.append(0)
+                elif lab == second_label:
+                    self.list_im.append(path)
+                    self.list_lab.append(1)
+                    
         self.list_im = np.array(self.list_im, np.object)
         self.list_lab = np.array(self.list_lab, np.int64)
         self.num = self.list_im.shape[0]
         print('# Images found:', self.num)
 
-        # permutation
-        perm = np.random.permutation(self.num) 
-        self.list_im[:, ...] = self.list_im[perm, ...]
-        self.list_lab[:] = self.list_lab[perm, ...]
+        self.shuffle()
 
         self._idx = 0
         
@@ -116,17 +120,13 @@ class DataLoaderDisk(object):
 
             images_batch[i, ...] =  image[offset_h:offset_h+self.fine_size, offset_w:offset_w+self.fine_size, :]
             label = self.list_lab[self._idx]
-            if label == self.first_label:
-                label = 0
-            elif label == self.second_label:
-                label = 1
-            else:
-                label = 2
             labels_batch[i, ...] = label
             
             self._idx += 1
             if self._idx == self.num:
                 self._idx = 0
+                if self.randomize:
+                    self.shuffle()
         
         return images_batch, labels_batch
     
@@ -135,6 +135,11 @@ class DataLoaderDisk(object):
 
     def reset(self):
         self._idx = 0
+
+    def shuffle(self):
+        perm = np.random.permutation(self.num)
+        self.list_im[:, ...] = self.list_im[perm, ...]
+        self.list_lab[:] = self.list_lab[perm, ...]
 
     def data_mean(data_root, data_list, load_size):
         mean = np.zeros((load_size, load_size, 3))
