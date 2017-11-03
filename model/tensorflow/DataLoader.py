@@ -40,7 +40,9 @@ class DataLoaderDisk(object):
         self.num = self.list_im.shape[0]
         print('# Images found:', self.num)
 
-        self.shuffle()
+        if self.phase == 'training' or self.phase == 'validation':
+            self.shuffle()
+            
         self._idx = 0
         
     def next_batch(self, batch_size):
@@ -67,7 +69,7 @@ class DataLoaderDisk(object):
             self._idx += 1
             if self._idx == self.num:
                 self._idx = 0
-                if self.phase == 'training':
+                if self.phase == 'training' or self.phase == 'validation':
                     self.shuffle()
         
         return images_batch, labels_batch
