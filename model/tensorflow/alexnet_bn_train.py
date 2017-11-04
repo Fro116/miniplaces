@@ -32,7 +32,7 @@ def batch_norm_layer(x, train_phase, scope_bn):
     scope=scope_bn)
 
 def up_sample(x, keep_dropout, train_phase, name, output_depth):
-    with tf.name_scope("Upwnsample_"+name):    
+    with tf.name_scope("Upsample_"+name):    
         depth = x.get_shape().as_list()[3]
         up = tf.nn.separable_conv2d(x, tf.get_variable('wud' + name, shape = [3, 3, depth, 1], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
                                     tf.get_variable('wup' + name, shape = [1, 1, depth, output_depth], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
@@ -81,21 +81,21 @@ def alexnet(x, keep_dropout, train_phase):
         e1 = batch_norm_layer(e1, train_phase, 'be1')
         e1 = tf.nn.relu(e1)
 
-        e2 = tf.nn.conv2d(e1, tf.get_variable('we2', shape = [3, 3, 32, 64], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer), padding = 'SAME', strides = [1,1,1,1])
+        e2 = tf.nn.conv2d(e1, tf.get_variable('we2', shape = [3, 3, 32, 64], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer), padding = 'SAME', strides = [1,2,2,1])
         e2 = batch_norm_layer(e2, train_phase, 'be2')
         e2 = tf.nn.relu(e2)
 
         e3 = down_sample(e2, keep_dropout, train_phase, str(3))
-        e4 = down_sample(e3, keep_dropout, train_phase, str(4))
+#        e4 = down_sample(e2, keep_dropout, train_phase, str(4))
 
-    with tf.name_scope("MiddleFlow"):
-        for k in range(8):
-            e4 = feature_select(e4, keep_dropout, train_phase, str(k))
+#     with tf.name_scope("MiddleFlow"):
+#         for k in range(4):
+#             e4 = feature_select(e4, keep_dropout, train_phase, str(k))
 
-    with tf.name_scope("ExitFlow"):
-        e5 = down_sample(e4, keep_dropout, train_phase, str(5))
-        e6 = up_sample(e5, keep_dropout, train_phase, str(6), 256)
-        e7 = up_sample(e6, keep_dropout, train_phase, str(7), 2)
+#     with tf.name_scope("ExitFlow"):
+#         e5 = down_sample(e4, keep_dropout, train_phase, str(5))
+#         e6 = up_sample(e5, keep_dropout, train_phase, str(6), 256)
+        e7 = up_sample(e3, keep_dropout, train_phase, str(7), 2)
         e7 = tf.reduce_mean(e7, axis = [1,2])        
         return e7
 
@@ -153,7 +153,7 @@ def train(sess):
             print('[%s]:' %(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
             
             # Calculate batch loss and accuracy on training set
-            l, acc1, acc5, reg, eval_loss, log = sess.run([loss, accuracy1, accuracy5, regularization_loss, evaluation_loss, summary],
+            l, acc1, acc5, reg, eval_loss = sess.run([loss, accuracy1, accuracy5, regularization_loss, evaluation_loss],
                                                           feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False}) 
             print("-Iter " + str(step) +
                   ", Training Loss= " + "{:.6f}".format(l) +
@@ -161,16 +161,16 @@ def train(sess):
                   ", Top5 = " + "{:.4f}".format(acc5) +
                   ", Evaluation Loss = " + "{:.4f}".format(eval_loss) +
                   ", Regularization Loss = " + "{:.4f}".format(reg))
-            train_writer.add_summary(log, step)
+#            train_writer.add_summary(log, step)
             
             # Calculate batch loss and accuracy on validation set
             images_batch_val, labels_batch_val = loader_val.next_batch(batch_size)    
-            l, acc1, acc5, log = sess.run([loss, accuracy1, accuracy5, summary], feed_dict={x: images_batch_val, y: labels_batch_val, keep_dropout: 1., train_phase: False}) 
+            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5], feed_dict={x: images_batch_val, y: labels_batch_val, keep_dropout: 1., train_phase: False}) 
             print("-Iter " + str(step) + ", Validation Loss= " + \
                   "{:.6f}".format(l) + ", Accuracy Top1 = " + \
                   "{:.4f}".format(acc1) + ", Top5 = " + \
                   "{:.4f}".format(acc5))
-            val_writer.add_summary(log, step)
+#            val_writer.add_summary(log, step)
             
         # Run optimization op (backprop)
         sess.run(train_optimizer, feed_dict={x: images_batch, y: labels_batch, keep_dropout: dropout, train_phase: True})
@@ -233,9 +233,8 @@ def train_network():
         validate(sess)
         evaluate(sess)
 
-for first in range(10):
+for first in range(20):
     for second in range(first):
-        # Construct dataloader
         opt_data_train = {
             'data_root': '../../data/images/',
             'data_list': '../../data/total_train.txt',
@@ -258,7 +257,7 @@ for first in range(10):
         }
         opt_data_test = {
             'data_root': '../../data/images/',
-            'data_list': '../../data/val10.txt',
+            'data_list': '../../data/val20.txt',
             'load_size': load_size,
             'fine_size': fine_size,
             'data_mean': data_mean,
@@ -267,7 +266,7 @@ for first in range(10):
             'second_label': second
         }        
 
-        loader_train = DataLoaderDisk(**opt_data_train)
+        loader_train = DataLoaderH5(**opt_data_train)
         loader_val = DataLoaderDisk(**opt_data_val)
         loader_test = DataLoaderDisk(**opt_data_test)        
         train_network()
