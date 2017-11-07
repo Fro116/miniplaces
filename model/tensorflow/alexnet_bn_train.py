@@ -5,7 +5,7 @@ from tensorflow.contrib.layers.python.layers import batch_norm
 from DataLoader import *
 
 # Dataset Parameters
-batch_size = 100
+batch_size = 32
 load_size = 128
 fine_size = 112
 c = 3
@@ -14,106 +14,91 @@ experiment = 'binary'
 
 # Training Parameters
 learning_rate = 0.001
-pretrain_learning_rate = 0.00001
+#pretrain_learning_rate = 0.00001
 dropout = 0.5 # Dropout, probability to keep units
 training_iters = 50000
 step_display = 50
 step_save = 5000
 path_save = './models/alexnet_bn'
-start_from = './models/full_obj/alexnet_bn-5000'
-regularization_scale = 0.0001
+start_from = ''#'./models/full_obj/alexnet_bn-5000'
+regularization_scale = 0.00001
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
 def batch_norm_layer(x, train_phase, scope_bn):
-    return batch_norm(x, decay=0.9, center=True, scale=True,
-    updates_collections=None,
-    is_training=train_phase,
-    reuse=None,
-    trainable=True,
-    scope=scope_bn)
+    return batch_norm(x, decay=0.9, center=True, scale=True, updates_collections=None, is_training=train_phase, reuse=None, trainable=True, scope=scope_bn)
 
-def up_sample(x, keep_dropout, train_phase, name, output_depth):
-    with tf.variable_scope("Upsample_"+name):    
+def separable_conv(x, output_depth, name, relu_on_entry):
+    with tf.variable_scope("-separable_conv"+name):    
         depth = x.get_shape().as_list()[3]
-        up = tf.nn.separable_conv2d(x, tf.get_variable('wud' + name, shape = [3, 3, depth, 1], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
-                                    tf.get_variable('wup' + name, shape = [1, 1, depth, output_depth], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
-                                    padding = 'SAME', strides = [1,1,1,1])
-        up = batch_norm_layer(up, train_phase, 'bu' + name)
-        up = tf.nn.relu(up)
-        return up
+        conv = x
+        if relu_on_entry:
+            conv = tf.nn.relu(conv)        
+        conv = tf.nn.separable_conv2d(conv, tf.get_variable('-depthwise', shape = [3, 3, depth, 1], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
+                                      tf.get_variable('-pointwise' + name, shape = [1, 1, depth, output_depth], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
+                                      padding = 'SAME', strides = [1,1,1,1])
+        conv = batch_norm_layer(conv, train_phase, '-batch_norm' + name)
+        if not relu_on_entry:
+            conv = tf.nn.relu(conv)
+        return conv
 
-def down_sample(x, keep_dropout, train_phase, name):
-    with tf.variable_scope("Downsample_"+name):
+def conv(x, output_depth, filter_size, stride, name, relu):
+    with tf.variable_scope("-conv"+name):        
         depth = x.get_shape().as_list()[3]
-        dl = tf.nn.conv2d(x, tf.get_variable('wdl' + name, shape = [3, 3, depth, depth*2], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
-                          padding = 'SAME', strides = [1,2,2,1])
-        dl = batch_norm_layer(dl, train_phase, 'bdl'+ name)
-        dl = tf.nn.relu(dl)
-        
-        x = tf.nn.relu(x)
-        dr = tf.nn.separable_conv2d(x, tf.get_variable('wdrdf' + name, shape = [3, 3, depth, 1], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
-                                    tf.get_variable('wdrpf' + name, shape = [1, 1, depth, depth*2], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
-                                    padding = 'SAME', strides = [1,1,1,1])
-        dr = batch_norm_layer(dr, train_phase, 'bdrf'+ name)
-        dr = tf.nn.relu(dr)
-        dr = tf.nn.separable_conv2d(dr, tf.get_variable('wdrds' + name, shape = [3, 3, depth*2, 1], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
-                                    tf.get_variable('wdrps' + name, shape = [1, 1, depth*2, depth*2], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
-                                    padding = 'SAME', strides = [1,1,1,1])
-        dr = batch_norm_layer(dr, train_phase, 'bdrs'+ name)    
-        dr = tf.nn.max_pool(dr, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='SAME')            
-        return tf.add(dl, dr)
+        conv = tf.nn.conv2d(x, tf.get_variable('-kernel' + name, shape = [filter_size, filter_size, depth, output_depth], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
+                        padding = 'SAME', strides = [1, stride, stride, 1])
+        conv = batch_norm_layer(conv, train_phase, '-batch_norm'+ name)
+        if relu:
+            conv = tf.nn.relu(conv)
+        return conv
+    
+def down_sample(x, first_depth, second_depth, stride, keep_dropout, train_phase, name):
+    with tf.variable_scope("-down_sample"+name):
+        bias = conv(x, output_depth = second_depth, filter_size = 1, stride = stride, name = "-bias", relu = False)
+        first = separable_conv(x, output_depth = first_depth, name = "-first", relu_on_entry = True)
+        second = separable_conv(first, output_depth = second_depth, name = "-second", relu_on_entry = True)
+        pool = tf.nn.max_pool(second, ksize=[1, 3, 3, 1], strides=[1, stride, stride, 1], padding='SAME')            
+        return tf.add(bias, pool)
 
-def feature_select(x, keep_dropout, train_phase, id):
-    with tf.variable_scope("FeatureSelect_" + str(id)):
+def feature_select(x, keep_dropout, train_phase, name):
+    with tf.variable_scope("-feature_select" + name):
         depth = x.get_shape().as_list()[3]    
-        m = x
+        feature = x
         for k in range(3):
-            name = str(k) + id        
-            m = tf.nn.relu(m)
-            m = tf.nn.separable_conv2d(m, tf.get_variable('mdf' + name, shape = [3, 3, depth, 1], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
-                                       tf.get_variable('mpf' + name, shape = [1, 1, depth, depth], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
-                                       padding = 'SAME', strides = [1,1,1,1])    
-            m = batch_norm_layer(m, train_phase, 'bmf'+ name)        
-        return tf.add(x, m)
+            feature = separable_conv(feature, output_depth = depth, name = "-feature_"+str(k), relu_on_entry = True)
+        return tf.add(x, feature)
 
-def alexnet(x, keep_dropout, train_phase):
+def alexnet(x, keep_dropout, train_phase, task):
     with tf.variable_scope("EntryFlow"):
-        e1 = tf.nn.conv2d(x, tf.get_variable('we1', shape = [3, 3, 3, 32], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer), padding = 'SAME', strides = [1,2,2,1])
-        e1 = batch_norm_layer(e1, train_phase, 'be1')
-        e1 = tf.nn.relu(e1)
-
-        e2 = tf.nn.conv2d(e1, tf.get_variable('we2', shape = [3, 3, 32, 64], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer), padding = 'SAME', strides = [1,1,1,1])
-        e2 = batch_norm_layer(e2, train_phase, 'be2')
-        e2 = tf.nn.relu(e2)
-
-        e3 = down_sample(e2, keep_dropout, train_phase, str(3))
-        e4 = down_sample(e3, keep_dropout, train_phase, str(4))
+        step1 = conv(x, output_depth = 32, filter_size = 3, stride = 2, relu = True, name = "-1")
+        step2 = conv(step1, output_depth = 64, filter_size = 3, stride = 1, relu = True, name = "-2")        
+        step3 = down_sample(step2, first_depth = 128, second_depth = 128, stride = 2, keep_dropout = keep_dropout, train_phase = train_phase, name = "-3")
+        step4 = down_sample(step3, first_depth = 256, second_depth = 256, stride = 2, keep_dropout = keep_dropout, train_phase = train_phase, name = "-4")
+        step5 = down_sample(step4, first_depth = 728, second_depth = 728, stride = 1, keep_dropout = keep_dropout, train_phase = train_phase, name = "-5")
 
     with tf.variable_scope("MiddleFlow"):
+        features = step5
         for k in range(8):
-            e4 = feature_select(e4, keep_dropout, train_phase, str(k))
+            features = feature_select(features, keep_dropout, train_phase, "-"+str(k))
 
-    with tf.variable_scope("ExitFlow"):
-        e5 = down_sample(e4, keep_dropout, train_phase, str(5))
-        e5 = up_sample(e5, keep_dropout, train_phase, str(6), 512)
-        e6 = up_sample(e5, keep_dropout, train_phase, str(7), 1024)            
-        e7 = up_sample(e6, keep_dropout, train_phase, str(8), 175)
-#        e7 = tf.reduce_mean(e7, axis = [1,2])            
-#        return e7
+    with tf.variable_scope("ObjectRecognition"):
+        domain1 = down_sample(features, first_depth = 728, second_depth = 1024, stride = 1, keep_dropout = keep_dropout, train_phase = train_phase, name = "-1")
+        domain2 = separable_conv(domain1, output_depth = 1536, name = "-2", relu_on_entry = False)
+        domain3 = separable_conv(domain2, output_depth = 2048, name = "-3", relu_on_entry = False)
+        domain4 = separable_conv(domain3, output_depth = 175, name = "-4", relu_on_entry = False)
+        objects = tf.reduce_mean(domain4, axis = [1,2])
 
-    with tf.variable_scope("Coda"):
-        e8 = down_sample(e4, keep_dropout, train_phase, str(9))
-        e8 = up_sample(e8, keep_dropout, train_phase, str(10), 512)
-        e8 = tf.concat([e8, e5], axis = 3)
-        e8 = up_sample(e8, keep_dropout, train_phase, str(11), 1024)
-        e8 = tf.concat([e8, e6], axis = 3)        
-        e8 = up_sample(e8, keep_dropout, train_phase, str(12), 2048)
-        e8 = tf.concat([e8, e7], axis = 3)        
-        e8 = up_sample(e8, keep_dropout, train_phase, str(13), 100)            
-        e8 = tf.reduce_mean(e8, axis = [1,2])
-        return e8
+    with tf.variable_scope("SceneRecognition"):
+        domain1 = down_sample(features, first_depth = 728, second_depth = 1024, stride = 1, keep_dropout = keep_dropout, train_phase = train_phase, name = "-1")
+        domain2 = separable_conv(domain1, output_depth = 1536, name = "-2", relu_on_entry = False)
+        domain3 = separable_conv(domain2, output_depth = 2048, name = "-3", relu_on_entry = False)
+        domain4 = separable_conv(domain3, output_depth = 100, name = "-4", relu_on_entry = False)
+        scenes = tf.reduce_mean(domain4, axis = [1,2])
 
-
+    if task == 'ObjectRecognition':
+        return objects
+    elif task == 'SceneRecognition':
+        return scenes
+    
 # tf Graph input
 x = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
 y = tf.placeholder(tf.int64, None)
@@ -121,18 +106,18 @@ keep_dropout = tf.placeholder(tf.float32)
 train_phase = tf.placeholder(tf.bool)
 
 # Construct model
-logits = alexnet(x, keep_dropout, train_phase)
+logits = alexnet(x, keep_dropout, train_phase, "SceneRecognition")
 
 # Define loss and optimizer
 regularization_loss = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
 evaluation_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits))
 loss = evaluation_loss + regularization_loss
-transfer_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope = "Coda")
-val_list = (tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "EntryFlow") +
-            tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "MiddleFlow") +
-            tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "ExitFlow"))
-train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss, var_list = transfer_list)
-pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=pretrain_learning_rate).minimize(loss, var_list = val_list)
+#transfer_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope = "Coda")
+#val_list = (tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "EntryFlow") +
+#            tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "MiddleFlow") +
+#            tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "ExitFlow"))
+train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)#, var_list = transfer_list)
+#pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=pretrain_learning_rate).minimize(loss, var_list = val_list)
 
 # Evaluate model
 values, indices = tf.nn.top_k(logits, 1)
@@ -144,7 +129,8 @@ init = tf.global_variables_initializer()
 
 # define saver
 saver = tf.train.Saver()
-restorer = tf.train.Saver(val_list)
+restorer = saver
+#restorer = tf.train.Saver(val_list)
 
 # define summary writer
 train_writer = tf.summary.FileWriter('logs/' + experiment + 'train', tf.get_default_graph());
