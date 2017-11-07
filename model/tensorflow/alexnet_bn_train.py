@@ -5,7 +5,7 @@ from tensorflow.contrib.layers.python.layers import batch_norm
 from DataLoader import *
 
 # Dataset Parameters
-batch_size = 64
+batch_size = 100
 load_size = 128
 fine_size = 112
 c = 3
@@ -14,13 +14,14 @@ experiment = 'binary'
 
 # Training Parameters
 learning_rate = 0.001
+pretrain_learning_rate = 0.00001
 dropout = 0.5 # Dropout, probability to keep units
-training_iters = 1500
+training_iters = 50000
 step_display = 50
 step_save = 5000
 path_save = './models/alexnet_bn'
-start_from = '' #'./models/xception/alexnet_bn-30000'
-regularization_scale = 0.
+start_from = './models/full_obj/alexnet_bn-5000'
+regularization_scale = 0.0001
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
 def batch_norm_layer(x, train_phase, scope_bn):
@@ -32,7 +33,7 @@ def batch_norm_layer(x, train_phase, scope_bn):
     scope=scope_bn)
 
 def up_sample(x, keep_dropout, train_phase, name, output_depth):
-    with tf.name_scope("Upsample_"+name):    
+    with tf.variable_scope("Upsample_"+name):    
         depth = x.get_shape().as_list()[3]
         up = tf.nn.separable_conv2d(x, tf.get_variable('wud' + name, shape = [3, 3, depth, 1], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
                                     tf.get_variable('wup' + name, shape = [1, 1, depth, output_depth], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
@@ -42,7 +43,7 @@ def up_sample(x, keep_dropout, train_phase, name, output_depth):
         return up
 
 def down_sample(x, keep_dropout, train_phase, name):
-    with tf.name_scope("Downsample_"+name):
+    with tf.variable_scope("Downsample_"+name):
         depth = x.get_shape().as_list()[3]
         dl = tf.nn.conv2d(x, tf.get_variable('wdl' + name, shape = [3, 3, depth, depth*2], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer),
                           padding = 'SAME', strides = [1,2,2,1])
@@ -63,7 +64,7 @@ def down_sample(x, keep_dropout, train_phase, name):
         return tf.add(dl, dr)
 
 def feature_select(x, keep_dropout, train_phase, id):
-    with tf.name_scope("FeatureSelect_" + str(id)):
+    with tf.variable_scope("FeatureSelect_" + str(id)):
         depth = x.get_shape().as_list()[3]    
         m = x
         for k in range(3):
@@ -76,28 +77,42 @@ def feature_select(x, keep_dropout, train_phase, id):
         return tf.add(x, m)
 
 def alexnet(x, keep_dropout, train_phase):
-    with tf.name_scope("EntryFlow"):
+    with tf.variable_scope("EntryFlow"):
         e1 = tf.nn.conv2d(x, tf.get_variable('we1', shape = [3, 3, 3, 32], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer), padding = 'SAME', strides = [1,2,2,1])
         e1 = batch_norm_layer(e1, train_phase, 'be1')
         e1 = tf.nn.relu(e1)
 
-        e2 = tf.nn.conv2d(e1, tf.get_variable('we2', shape = [3, 3, 32, 64], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer), padding = 'SAME', strides = [1,2,2,1])
+        e2 = tf.nn.conv2d(e1, tf.get_variable('we2', shape = [3, 3, 32, 64], initializer = tf.contrib.layers.xavier_initializer(), regularizer = regularizer), padding = 'SAME', strides = [1,1,1,1])
         e2 = batch_norm_layer(e2, train_phase, 'be2')
         e2 = tf.nn.relu(e2)
 
         e3 = down_sample(e2, keep_dropout, train_phase, str(3))
-#        e4 = down_sample(e2, keep_dropout, train_phase, str(4))
+        e4 = down_sample(e3, keep_dropout, train_phase, str(4))
 
-#     with tf.name_scope("MiddleFlow"):
-#         for k in range(4):
-#             e4 = feature_select(e4, keep_dropout, train_phase, str(k))
+    with tf.variable_scope("MiddleFlow"):
+        for k in range(8):
+            e4 = feature_select(e4, keep_dropout, train_phase, str(k))
 
-#     with tf.name_scope("ExitFlow"):
-#         e5 = down_sample(e4, keep_dropout, train_phase, str(5))
-#         e6 = up_sample(e5, keep_dropout, train_phase, str(6), 256)
-        e7 = up_sample(e3, keep_dropout, train_phase, str(7), 2)
-        e7 = tf.reduce_mean(e7, axis = [1,2])        
-        return e7
+    with tf.variable_scope("ExitFlow"):
+        e5 = down_sample(e4, keep_dropout, train_phase, str(5))
+        e5 = up_sample(e5, keep_dropout, train_phase, str(6), 512)
+        e6 = up_sample(e5, keep_dropout, train_phase, str(7), 1024)            
+        e7 = up_sample(e6, keep_dropout, train_phase, str(8), 175)
+#        e7 = tf.reduce_mean(e7, axis = [1,2])            
+#        return e7
+
+    with tf.variable_scope("Coda"):
+        e8 = down_sample(e4, keep_dropout, train_phase, str(9))
+        e8 = up_sample(e8, keep_dropout, train_phase, str(10), 512)
+        e8 = tf.concat([e8, e5], axis = 3)
+        e8 = up_sample(e8, keep_dropout, train_phase, str(11), 1024)
+        e8 = tf.concat([e8, e6], axis = 3)        
+        e8 = up_sample(e8, keep_dropout, train_phase, str(12), 2048)
+        e8 = tf.concat([e8, e7], axis = 3)        
+        e8 = up_sample(e8, keep_dropout, train_phase, str(13), 100)            
+        e8 = tf.reduce_mean(e8, axis = [1,2])
+        return e8
+
 
 # tf Graph input
 x = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
@@ -110,36 +125,35 @@ logits = alexnet(x, keep_dropout, train_phase)
 
 # Define loss and optimizer
 regularization_loss = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
-tf.summary.scalar('Regularization Loss', regularization_loss)
 evaluation_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits))
-tf.summary.scalar('Evaluation Loss', evaluation_loss)
 loss = evaluation_loss + regularization_loss
-tf.summary.scalar('Loss', loss)
-train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
+transfer_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope = "Coda")
+val_list = (tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "EntryFlow") +
+            tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "MiddleFlow") +
+            tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "ExitFlow"))
+train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss, var_list = transfer_list)
+pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=pretrain_learning_rate).minimize(loss, var_list = val_list)
 
 # Evaluate model
 values, indices = tf.nn.top_k(logits, 1)
 accuracy1 = tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits, y, 1), tf.float32))
 accuracy5 = tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits, y, 5), tf.float32))
-tf.summary.scalar('Top 1 Accuracy', accuracy1)
-tf.summary.scalar('Top 5 Accuracy', accuracy5)
-summary = tf.summary.merge_all()
 
 # define initialization
 init = tf.global_variables_initializer()
 
 # define saver
 saver = tf.train.Saver()
+restorer = tf.train.Saver(val_list)
 
 # define summary writer
 train_writer = tf.summary.FileWriter('logs/' + experiment + 'train', tf.get_default_graph());
 val_writer = tf.summary.FileWriter('logs/' + experiment + 'val', tf.get_default_graph());
 
 def initialize(sess):
-    if len(start_from)>1:
-        saver.restore(sess, start_from)
-    else:
-        sess.run(init)
+    sess.run(init)            
+    if len(start_from)>1:        
+        restorer.restore(sess, start_from)
 
 def train(sess):
     # Initialization
@@ -148,7 +162,7 @@ def train(sess):
     while step < training_iters:
         # Load a batch of training data
         images_batch, labels_batch = loader_train.next_batch(batch_size)
-        
+
         if step % step_display == 0:
             print('[%s]:' %(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
             
@@ -161,7 +175,6 @@ def train(sess):
                   ", Top5 = " + "{:.4f}".format(acc5) +
                   ", Evaluation Loss = " + "{:.4f}".format(eval_loss) +
                   ", Regularization Loss = " + "{:.4f}".format(reg))
-#            train_writer.add_summary(log, step)
             
             # Calculate batch loss and accuracy on validation set
             images_batch_val, labels_batch_val = loader_val.next_batch(batch_size)    
@@ -170,7 +183,6 @@ def train(sess):
                   "{:.6f}".format(l) + ", Accuracy Top1 = " + \
                   "{:.4f}".format(acc1) + ", Top5 = " + \
                   "{:.4f}".format(acc5))
-#            val_writer.add_summary(log, step)
             
         # Run optimization op (backprop)
         sess.run(train_optimizer, feed_dict={x: images_batch, y: labels_batch, keep_dropout: dropout, train_phase: True})
@@ -179,13 +191,14 @@ def train(sess):
                 
         # Save model
         if step % step_save == 0:
-            saver.save(sess, path_save, global_step=step)
+            saver.save(sess, path_save, global_step=step)            
             print("Model saved at Iter %d !" %(step))
+            validate(sess)
+            evaluate(sess)
             
-            train_writer.close()
-            val_writer.close()
-            print("Optimization Finished!")
-
+    train_writer.close()
+    val_writer.close()
+    print("Optimization Finished!")
 
 def validate(sess):
     # Evaluate on the whole validation set
@@ -207,7 +220,7 @@ def validate(sess):
         acc5_total += acc5 * size
     acc1_total /= loader_val.size()
     acc5_total /= loader_val.size()
-    print('Validation Finished! First Label = ' + str(first) + ', Second Label = ' + str(second) + ', Accuracy Top1 = ' + "{:.4f}".format(acc1_total) + ", Top5 = " + "{:.4f}".format(acc5_total))
+    print('Validation Finished! ', 'Accuracy Top1 = ' + "{:.4f}".format(acc1_total) + ", Top5 = " + "{:.4f}".format(acc5_total))
 
 def evaluate(sess):
     print('Evaluation on the whole test set...')
@@ -222,7 +235,6 @@ def evaluate(sess):
         images_batch, labels_batch = loader_test.next_batch(size)    
         preds = sess.run(indices, feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
         predictions = predictions + [x[0] for x in preds]
-    print('Evaluation Finished! First Label = ' + str(first) + ', Second Label = ' + str(second))
     print(predictions)    
     
 def train_network():
@@ -233,40 +245,34 @@ def train_network():
         validate(sess)
         evaluate(sess)
 
-for first in range(20):
-    for second in range(first):
-        opt_data_train = {
-            'data_root': '../../data/images/',
-            'data_list': '../../data/total_train.txt',
-            'load_size': load_size,
-            'fine_size': fine_size,
-            'data_mean': data_mean,
-            'phase': 'training',
-            'first_label': first,
-            'second_label': second
-        }
-        opt_data_val = {
-            'data_root': '../../data/images/',
-            'data_list': '../../data/total_val.txt',
-            'load_size': load_size,
-            'fine_size': fine_size,
-            'data_mean': data_mean,
-            'phase': 'validation',
-            'first_label': first,
-            'second_label': second
-        }
-        opt_data_test = {
-            'data_root': '../../data/images/',
-            'data_list': '../../data/val20.txt',
-            'load_size': load_size,
-            'fine_size': fine_size,
-            'data_mean': data_mean,
-            'phase': 'evaluation',
-            'first_label': first,
-            'second_label': second
-        }        
-
-        loader_train = DataLoaderH5(**opt_data_train)
-        loader_val = DataLoaderDisk(**opt_data_val)
-        loader_test = DataLoaderDisk(**opt_data_test)        
-        train_network()
+opt_data_train = {
+    'data_root': '../../data/images/',
+    'data_list': '../../data/full_obj_train.txt',
+    'load_size': load_size,
+    'fine_size': fine_size,
+    'data_mean': data_mean,
+    'phase': 'training',
+}
+opt_data_val = {
+    'data_root': '../../data/images/',
+    'data_list': '../../data/full_obj_val.txt',
+    'load_size': load_size,
+    'fine_size': fine_size,
+    'data_mean': data_mean,
+    'phase': 'validation',
+}
+opt_data_test = {
+    'data_root': '../../data/images/',
+    'data_list': '../../data/full_obj_val.txt',
+    'load_size': load_size,
+    'fine_size': fine_size,
+    'data_mean': data_mean,
+    'phase': 'evaluation',
+}        
+# loader_train = DataLoaderDisk(**opt_data_train)
+# loader_val = DataLoaderDisk(**opt_data_val)
+# loader_test = DataLoaderDisk(**opt_data_test)
+loader_train = DataLoaderH5(**opt_data_train)
+loader_val = DataLoaderH5(**opt_data_val)
+loader_test = DataLoaderH5(**opt_data_test)        
+train_network()
