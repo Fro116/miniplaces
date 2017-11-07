@@ -14,13 +14,13 @@ experiment = 'binary'
 
 # Training Parameters
 learning_rate = 0.001
-#pretrain_learning_rate = 0.00001
 dropout = 0.5 # Dropout, probability to keep units
-training_iters = 50000
+training_iters = 500000
 step_display = 50
 step_save = 5000
+step_phase = 500
 path_save = './models/alexnet_bn'
-start_from = ''#'./models/full_obj/alexnet_bn-5000'
+start_from = ''#./models/xception/alexnet_bn-50000'
 regularization_scale = 0.00001
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
@@ -96,7 +96,7 @@ def alexnet(x, keep_dropout, train_phase, task):
 
     if task == 'ObjectRecognition':
         return objects
-    elif task == 'SceneRecognition':
+    else:# task == 'SceneRecognition':
         return scenes
     
 # tf Graph input
@@ -104,20 +104,21 @@ x = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
 y = tf.placeholder(tf.int64, None)
 keep_dropout = tf.placeholder(tf.float32)
 train_phase = tf.placeholder(tf.bool)
+task = tf.placeholder(tf.string)
+task_val = "SceneRecognition"
 
 # Construct model
-logits = alexnet(x, keep_dropout, train_phase, "SceneRecognition")
+logits = alexnet(x, keep_dropout, train_phase, task_val)
 
 # Define loss and optimizer
 regularization_loss = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
 evaluation_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits))
 loss = evaluation_loss + regularization_loss
-#transfer_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope = "Coda")
-#val_list = (tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "EntryFlow") +
-#            tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "MiddleFlow") +
-#            tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "ExitFlow"))
-train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)#, var_list = transfer_list)
-#pretrain_optimizer = tf.train.AdamOptimizer(learning_rate=pretrain_learning_rate).minimize(loss, var_list = val_list)
+domain_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope = task_val)
+feature_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "EntryFlow") + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "MiddleFlow")
+domain_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss, var_list = domain_list)
+feature_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss, var_list = feature_list)
+full_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
 # Evaluate model
 values, indices = tf.nn.top_k(logits, 1)
@@ -132,61 +133,59 @@ saver = tf.train.Saver()
 restorer = saver
 #restorer = tf.train.Saver(val_list)
 
-# define summary writer
-train_writer = tf.summary.FileWriter('logs/' + experiment + 'train', tf.get_default_graph());
-val_writer = tf.summary.FileWriter('logs/' + experiment + 'val', tf.get_default_graph());
-
 def initialize(sess):
     sess.run(init)            
     if len(start_from)>1:        
         restorer.restore(sess, start_from)
 
 def train(sess):
-    # Initialization
     step = 0
+    phases = ['full']#['feature', 'domain']
+    tasks = ["SceneRecognition"]#["ObjectRecognition", "SceneRecognition"]
+    loader_trains = [scene_loader_train, obj_loader_train]
+    loader_vals = [scene_loader_val, obj_loader_val]
+    loader_tests = [scene_loader_test, obj_loader_test]
+    optimizers = [full_optimizer, domain_optimizer, feature_optimizer]
+    phase_index = 0
     
     while step < training_iters:
-        # Load a batch of training data
+        task_index = np.random.random_integers(0, len(tasks)-1)        
+        task_str = tasks[task_index]
+        loader_train = loader_trains[task_index]
+        loader_val = loader_vals[task_index]
         images_batch, labels_batch = loader_train.next_batch(batch_size)
 
         if step % step_display == 0:
             print('[%s]:' %(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            
-            # Calculate batch loss and accuracy on training set
             l, acc1, acc5, reg, eval_loss = sess.run([loss, accuracy1, accuracy5, regularization_loss, evaluation_loss],
-                                                          feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False}) 
-            print("-Iter " + str(step) +
-                  ", Training Loss= " + "{:.6f}".format(l) +
-                  ", Accuracy Top1 = " + "{:.4f}".format(acc1) +
-                  ", Top5 = " + "{:.4f}".format(acc5) +
-                  ", Evaluation Loss = " + "{:.4f}".format(eval_loss) +
-                  ", Regularization Loss = " + "{:.4f}".format(reg))
-            
-            # Calculate batch loss and accuracy on validation set
+                                                     feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False, task: task_str}) 
+            print("-Iter " + str(step) + ", Training Loss= " + "{:.6f}".format(l) + ", Accuracy Top1 = " + "{:.4f}".format(acc1) +
+                  ", Top5 = " + "{:.4f}".format(acc5) + ", Evaluation Loss = " + "{:.4f}".format(eval_loss) + ", Regularization Loss = " + "{:.4f}".format(reg))
             images_batch_val, labels_batch_val = loader_val.next_batch(batch_size)    
-            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5], feed_dict={x: images_batch_val, y: labels_batch_val, keep_dropout: 1., train_phase: False}) 
-            print("-Iter " + str(step) + ", Validation Loss= " + \
-                  "{:.6f}".format(l) + ", Accuracy Top1 = " + \
-                  "{:.4f}".format(acc1) + ", Top5 = " + \
-                  "{:.4f}".format(acc5))
+            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False, task: task_str}) 
+            print("-Iter " + str(step) + ", Validation Loss= " + "{:.6f}".format(l) + ", Accuracy Top1 = " + "{:.4f}".format(acc1) + ", Top5 = " + "{:.4f}".format(acc5))
+
+        if step % step_phase == 0:
+            phase = phases[phase_index]
+            phase_index += 1
+            if phase_index == len(phases):
+                phase_index = 0
             
-        # Run optimization op (backprop)
-        sess.run(train_optimizer, feed_dict={x: images_batch, y: labels_batch, keep_dropout: dropout, train_phase: True})
+        sess.run(optimizers[phase_index], feed_dict={x: images_batch, y: labels_batch, keep_dropout: dropout, train_phase: True, task: task_str})
             
         step += 1
                 
-        # Save model
         if step % step_save == 0:
             saver.save(sess, path_save, global_step=step)            
             print("Model saved at Iter %d !" %(step))
-            validate(sess)
-            evaluate(sess)
+            for i in range(len(tasks)):
+                print("Task:" + str(tasks[i]))
+                validate(sess, loader_vals[i], tasks[i])
+                evaluate(sess, loader_tests[i], tasks[i])
             
-    train_writer.close()
-    val_writer.close()
     print("Optimization Finished!")
 
-def validate(sess):
+def validate(sess, loader_val, task_str):
     # Evaluate on the whole validation set
     print('Evaluation on the whole validation set...')
     acc1_total = 0.
@@ -201,14 +200,14 @@ def validate(sess):
             size = loader_val.size() - i
         i += size
         images_batch, labels_batch = loader_val.next_batch(size)    
-        acc1, acc5 = sess.run([accuracy1, accuracy5], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
+        acc1, acc5 = sess.run([accuracy1, accuracy5], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False, task: task_str})
         acc1_total += acc1 * size
         acc5_total += acc5 * size
     acc1_total /= loader_val.size()
     acc5_total /= loader_val.size()
     print('Validation Finished! ', 'Accuracy Top1 = ' + "{:.4f}".format(acc1_total) + ", Top5 = " + "{:.4f}".format(acc5_total))
 
-def evaluate(sess):
+def evaluate(sess, loader_test, task_str):
     print('Evaluation on the whole test set...')
     predictions = []
     i = 0
@@ -219,7 +218,7 @@ def evaluate(sess):
             size = loader_test.size() - i
         i += size
         images_batch, labels_batch = loader_test.next_batch(size)    
-        preds = sess.run(indices, feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
+        preds = sess.run(indices, feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False, tasks: task_str})
         predictions = predictions + [x[0] for x in preds]
     print(predictions)    
     
@@ -228,12 +227,10 @@ def train_network():
     with tf.Session() as sess:        
         initialize(sess)
         train(sess)
-        validate(sess)
-        evaluate(sess)
 
 opt_data_train = {
     'data_root': '../../data/images/',
-    'data_list': '../../data/full_obj_train.txt',
+    'data_list': '../../data/obj_train.txt',
     'load_size': load_size,
     'fine_size': fine_size,
     'data_mean': data_mean,
@@ -241,7 +238,7 @@ opt_data_train = {
 }
 opt_data_val = {
     'data_root': '../../data/images/',
-    'data_list': '../../data/full_obj_val.txt',
+    'data_list': '../../data/obj_val.txt',
     'load_size': load_size,
     'fine_size': fine_size,
     'data_mean': data_mean,
@@ -249,16 +246,16 @@ opt_data_val = {
 }
 opt_data_test = {
     'data_root': '../../data/images/',
-    'data_list': '../../data/full_obj_val.txt',
+    'data_list': '../../data/obj_val.txt',
     'load_size': load_size,
     'fine_size': fine_size,
     'data_mean': data_mean,
     'phase': 'evaluation',
 }        
-# loader_train = DataLoaderDisk(**opt_data_train)
-# loader_val = DataLoaderDisk(**opt_data_val)
-# loader_test = DataLoaderDisk(**opt_data_test)
-loader_train = DataLoaderH5(**opt_data_train)
-loader_val = DataLoaderH5(**opt_data_val)
-loader_test = DataLoaderH5(**opt_data_test)        
+obj_loader_train = DataLoaderDisk(**opt_data_train)
+obj_loader_val = DataLoaderDisk(**opt_data_val)
+obj_loader_test = DataLoaderDisk(**opt_data_test)
+scene_loader_train = DataLoaderH5(**opt_data_train)
+scene_loader_val = DataLoaderH5(**opt_data_val)
+scene_loader_test = DataLoaderH5(**opt_data_test)        
 train_network()
