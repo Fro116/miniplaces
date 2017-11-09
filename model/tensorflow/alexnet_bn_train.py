@@ -136,8 +136,8 @@ def train(sess):
             print('[%s]:' %(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
             l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5], feed_dict={x1: images_batch1, x2: images_batch2, y1: labels_batch1, y2: labels_batch2, keep_dropout: 1., train_phase: False}) 
             print("-Iter " + str(step) + ", Training Loss= " + str(l) + ", Accuracy Top1 = " + str(acc1) + ", Top5 = " + str(acc5))
-            val_images_batch1, val_labels_batch1 = scene_loader_train.next_batch(batch_size)
-            val_images_batch2, val_labels_batch2 = obj_loader_train.next_batch(batch_size)
+            val_images_batch1, val_labels_batch1 = scene_loader_val.next_batch(batch_size)
+            val_images_batch2, val_labels_batch2 = obj_loader_val.next_batch(batch_size)
             l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5],
                                                      feed_dict={x1: val_images_batch1, x2: val_images_batch2, y1: val_labels_batch1, y2: val_labels_batch2, keep_dropout: 1., train_phase: False}) 
             print("-Iter " + str(step) + ", Validation Loss= " + str(l) + ", Accuracy Top1 = " + str(acc1) + ", Top5 = " + str(acc5))
@@ -169,8 +169,8 @@ def validate(sess):
         else:
             size = scene_loader_val.size() - i
         i += size
-        val_images_batch1, val_labels_batch1 = scene_loader_train.next_batch(batch_size)
-        val_images_batch2, val_labels_batch2 = obj_loader_train.next_batch(batch_size)        
+        val_images_batch1, val_labels_batch1 = scene_loader_val.next_batch(batch_size)
+        val_images_batch2, val_labels_batch2 = obj_loader_val.next_batch(batch_size)        
         acc1, acc5 = sess.run([accuracy1, accuracy5], feed_dict={x1: val_images_batch1, x2: val_images_batch2, y1: val_labels_batch1, y2: val_labels_batch2, keep_dropout: 1., train_phase: False})
         acc1_total += np.array(acc1) * size
         acc5_total += np.array(acc5) * size
