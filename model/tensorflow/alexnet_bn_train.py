@@ -5,7 +5,7 @@ from tensorflow.contrib.layers.python.layers import batch_norm
 from DataLoader import *
 
 # Dataset Parameters
-batch_size = 32
+batch_size = 22
 load_size = 128
 fine_size = 112
 c = 3
@@ -17,8 +17,7 @@ learning_rate = 0.001
 dropout = 0.5 # Dropout, probability to keep units
 training_iters = 500000
 step_display = 50
-step_save = 5000
-step_phases = [2000]
+step_save = 7000
 path_save = './models/alexnet_bn'
 start_from = ''#./models/xception/alexnet_bn-50000'
 regularization_scale = 0.#0.00001
@@ -67,7 +66,7 @@ def feature_select(x, keep_dropout, train_phase, name):
             feature = separable_conv(feature, output_depth = depth, name = "-feature_"+str(k), relu_on_entry = True)
         return tf.add(x, feature)
 
-def gen_features(x, keep_dropout, train_phase):
+def network(x, keep_dropout, train_phase):
     with tf.variable_scope("EntryFlow"):
         step1 = conv(x, output_depth = 32, filter_size = 3, stride = 2, relu = True, name = "-1")
         step2 = conv(step1, output_depth = 64, filter_size = 3, stride = 1, relu = True, name = "-2")        
@@ -80,9 +79,6 @@ def gen_features(x, keep_dropout, train_phase):
         for k in range(8):
             features = feature_select(features, keep_dropout, train_phase, "-"+str(k))
 
-    return features
-
-def domain(x, keep_dropout, train_phase):
     with tf.variable_scope("ObjectRecognition"):
         domain1 = down_sample(features, first_depth = 728, second_depth = 1024, stride = 1, keep_dropout = keep_dropout, train_phase = train_phase, name = "-1")
         domain2 = separable_conv(domain1, output_depth = 1536, name = "-2", relu_on_entry = False)
@@ -100,39 +96,22 @@ def domain(x, keep_dropout, train_phase):
     return [scenes, objects]
     
 # tf Graph input
-x = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
-y = tf.placeholder(tf.int64, None)
+x1 = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
+x2 = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
+y1 = tf.placeholder(tf.int64, None)
+y2 = tf.placeholder(tf.int64, None)
 keep_dropout = tf.placeholder(tf.float32)
 train_phase = tf.placeholder(tf.bool)
-tasks = ["SceneRecognition", "ObjectRecognition"]
+x = tf.concat([x1, x2], axis = 0)
 
-domain_optimizers = [0 for i in range(len(tasks))]
-feature_optimizers = [0 for i in range(len(tasks))]
-full_optimizers = [0 for i in range(len(tasks))]
-accuracy1s = [0 for i in range(len(tasks))]
-accuracy5s = [0 for i in range(len(tasks))]
-indexes = [0 for i in range(len(tasks))]
-losses = [0 for i in range(len(tasks))]
-regularization_losses = [0 for i in range(len(tasks))]
-evaluation_losses = [0 for i in range(len(tasks))]
-
-features = gen_features(x, keep_dropout, train_phase)
-logits_arr = domain(features, keep_dropout, train_phase)
-for i in range(len(tasks)):
-    task = tasks[i]
-    logits = logits_arr[i]
-    regularization_losses[i] = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
-    evaluation_losses[i] = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits))
-    losses[i] = evaluation_losses[i] + regularization_losses[i]
-    domain_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope = task)
-    feature_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "EntryFlow") + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope = "MiddleFlow")
-    domain_optimizers[i] = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(losses[i], var_list = domain_list)
-    feature_optimizers[i] = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(losses[i], var_list = feature_list)
-    full_optimizers[i] = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(losses[i])
-
-    values, indexes[i] = tf.nn.top_k(logits, 1)
-    accuracy1s[i] = tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits, y, 1), tf.float32))
-    accuracy5s[i] = tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits, y, 5), tf.float32))
+logits = network(x, keep_dropout, train_phase)
+logits1 = logits[0][0:batch_size]
+logits2 = logits[1][batch_size:(2*batch_size)]
+loss = (tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y1, logits=logits1)) +
+        tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y2, logits=logits2)))
+accuracy1 = [tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits1, y1, 1), tf.float32)), tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits2, y2, 1), tf.float32))]
+accuracy5 = [tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits1, y1, 5), tf.float32)), tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits2, y2, 5), tf.float32))]
+train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
 
 # define initialization
 init = tf.global_variables_initializer()
@@ -140,7 +119,6 @@ init = tf.global_variables_initializer()
 # define saver
 saver = tf.train.Saver()
 restorer = saver
-#restorer = tf.train.Saver(val_list)
 
 def initialize(sess):
     sess.run(init)            
@@ -149,92 +127,72 @@ def initialize(sess):
 
 def train(sess):
     step = 0
-    phase_schedule = ['full']#'feature', 'domain']
-    phases = {'feature' : 0, 'domain' : 1, 'full' : 2}
-    loader_trains = [scene_loader_train, obj_loader_train]
-    loader_vals = [scene_loader_val, obj_loader_val]
-    loader_tests = [scene_loader_test, obj_loader_test]
-    optimizers = [domain_optimizers, feature_optimizers, full_optimizers]
-    phase_index = 0
-    step_phase = step_phases[phase_index]
     
     while step < training_iters:
-        if step % step_phase < step_phase/2:
-            task_index = 0
-        else:
-            task_index = 1
-        i = task_index
-        loader_train = loader_trains[task_index]
-        loader_val = loader_vals[task_index]
-        images_batch, labels_batch = loader_train.next_batch(batch_size)
-
-        if step % step_phase == 0:
-            phase_index += 1
-            if phase_index == len(phase_schedule):
-                phase_index = 0
-            phase = phases[phase_schedule[phase_index]]
-            step_phase = step_phases[phase_index]
+        images_batch1, labels_batch1 = scene_loader_train.next_batch(batch_size)
+        images_batch2, labels_batch2 = obj_loader_train.next_batch(batch_size)                
 
         if step % step_display == 0:
             print('[%s]:' %(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            l, acc1, acc5, reg, eval_loss = sess.run([losses[i], accuracy1s[i], accuracy5s[i], regularization_losses[i], evaluation_losses[i]],
-                                                     feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False}) 
-            print("-Iter " + str(step) + ", Phase " + phase_schedule[phase_index] + ", task " + tasks[task_index] +", Training Loss= " + "{:.6f}".format(l) + ", Accuracy Top1 = " + "{:.4f}".format(acc1) +
-                  ", Top5 = " + "{:.4f}".format(acc5) + ", Evaluation Loss = " + "{:.4f}".format(eval_loss) + ", Regularization Loss = " + "{:.4f}".format(reg))
-            images_batch_val, labels_batch_val = loader_val.next_batch(batch_size)    
-            l, acc1, acc5 = sess.run([losses[i], accuracy1s[i], accuracy5s[i]], feed_dict={x: images_batch_val, y: labels_batch_val, keep_dropout: 1., train_phase: False}) 
-            print("-Iter " + str(step) + ", Validation Loss= " + "{:.6f}".format(l) + ", Accuracy Top1 = " + "{:.4f}".format(acc1) + ", Top5 = " + "{:.4f}".format(acc5))
+            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5], feed_dict={x1: images_batch1, x2: images_batch2, y1: labels_batch1, y2: labels_batch2, keep_dropout: 1., train_phase: False}) 
+            print("-Iter " + str(step) + ", Training Loss= " + str(l) + ", Accuracy Top1 = " + str(acc1) + ", Top5 = " + str(acc5))
+            val_images_batch1, val_labels_batch1 = scene_loader_train.next_batch(batch_size)
+            val_images_batch2, val_labels_batch2 = obj_loader_train.next_batch(batch_size)
+            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5],
+                                                     feed_dict={x1: val_images_batch1, x2: val_images_batch2, y1: val_labels_batch1, y2: val_labels_batch2, keep_dropout: 1., train_phase: False}) 
+            print("-Iter " + str(step) + ", Validation Loss= " + str(l) + ", Accuracy Top1 = " + str(acc1) + ", Top5 = " + str(acc5))
             
-        sess.run(optimizers[phase][task_index], feed_dict={x: images_batch, y: labels_batch, keep_dropout: dropout, train_phase: True})
+        sess.run(train_optimizer, feed_dict={x1: images_batch1, x2: images_batch2, y1: labels_batch1, y2: labels_batch2, keep_dropout: dropout, train_phase: True})
             
         step += 1
                 
         if step % step_save == 0:
             saver.save(sess, path_save, global_step=step)            
             print("Model saved at Iter %d !" %(step))
-            for i in range(len(tasks)):
-                print("Task:" + str(tasks[i]))
-                validate(sess, loader_vals[i], i)
-#                evaluate(sess, loader_tests[i], i)
+            validate(sess)
+            #evaluate(sess)
             
     print("Optimization Finished!")
 
-def validate(sess, loader_val, task_index):
+def validate(sess):
     # Evaluate on the whole validation set
     print('Evaluation on the whole validation set...')
-    acc1_total = 0.
-    acc5_total = 0.
-    loader_val.reset()
+    acc1_total = np.array([0., 0.])
+    acc5_total = np.array([0., 0.])
+    scene_loader_val.reset()
+    obj_loader_val.reset()    
     
     i = 0
-    while i < loader_val.size():
-        if i + batch_size < loader_val.size():
+    while i < scene_loader_val.size():
+        if i + batch_size < scene_loader_val.size():
             size = batch_size
         else:
-            size = loader_val.size() - i
+            size = scene_loader_val.size() - i
         i += size
-        images_batch, labels_batch = loader_val.next_batch(size)    
-        acc1, acc5 = sess.run([accuracy1s[task_index], accuracy5s[task_index]], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
-        acc1_total += acc1 * size
-        acc5_total += acc5 * size
-    acc1_total /= loader_val.size()
-    acc5_total /= loader_val.size()
-    print('Validation Finished! ', 'Accuracy Top1 = ' + "{:.4f}".format(acc1_total) + ", Top5 = " + "{:.4f}".format(acc5_total))
+        val_images_batch1, val_labels_batch1 = scene_loader_train.next_batch(batch_size)
+        val_images_batch2, val_labels_batch2 = obj_loader_train.next_batch(batch_size)        
+        acc1, acc5 = sess.run([accuracy1, accuracy5], feed_dict={x1: val_images_batch1, x2: val_images_batch2, y1: val_labels_batch1, y2: val_labels_batch2, keep_dropout: 1., train_phase: False})
+        acc1_total += np.array(acc1) * size
+        acc5_total += np.array(acc5) * size
+        
+    acc1_total /= scene_loader_val.size()
+    acc5_total /= scene_loader_val.size()
+    print('Validation Finished! ', 'Accuracy Top1 = ' + str(acc1_total) + ", Top5 = " + str(acc5_total))
 
-def evaluate(sess, loader_test, task_index):
-    print('Evaluation on the whole test set...')
-    predictions = []
-    i = 0
-    while i < loader_test.size():
-        if i + batch_size < loader_test.size():
-            size = batch_size
-        else:
-            size = loader_test.size() - i
-        i += size
-        images_batch, labels_batch = loader_test.next_batch(size)    
-        preds = sess.run(indexes[task_index], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
-        predictions = predictions + [x[0] for x in preds]
-    print(predictions)    
+# def evaluate(sess, loader_test, task_index):
+#     print('Evaluation on the whole test set...')
+#     predictions = []
+#     i = 0
+#     while i < loader_test.size():
+#         if i + batch_size < loader_test.size():
+#             size = batch_size
+#         else:
+#             size = loader_test.size() - i
+#         i += size
+#         images_batch, labels_batch = loader_test.next_batch(size)    
+#         preds = sess.run(indexes[task_index], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
+#         predictions = predictions + [x[0] for x in preds]
+#     print(predictions)    
     
 def train_network():
     # Launch the graph
