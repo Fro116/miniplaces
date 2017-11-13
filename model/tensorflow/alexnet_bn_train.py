@@ -5,7 +5,7 @@ from tensorflow.contrib.layers.python.layers import batch_norm
 from DataLoader import *
 
 # Dataset Parameters
-batch_size = 22
+batch_size = 50
 load_size = 128
 fine_size = 112
 c = 3
@@ -14,13 +14,13 @@ experiment = 'binary'
 
 # Training Parameters
 learning_rate = 0.001
-dropout = 0.5 # Dropout, probability to keep units
+dropout = 0.1 # Dropout, probability to keep units
 training_iters = 500000
 step_display = 50
-step_save = 7000
+step_save = 4000
 path_save = './models/alexnet_bn'
-start_from = ''#./models/xception/alexnet_bn-50000'
-regularization_scale = 0.#0.00001
+start_from = './models/xceptionE/alexnet_bn-20000'
+regularization_scale = 0.#00001
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
 def batch_norm_layer(x, train_phase, scope_bn):
@@ -50,7 +50,7 @@ def conv(x, output_depth, filter_size, stride, name, relu):
             conv = tf.nn.relu(conv)
         return conv
     
-def down_sample(x, first_depth, second_depth, stride, keep_dropout, train_phase, name):
+def down_sample(x, first_depth, second_depth, stride, train_phase, name):
     with tf.variable_scope("-down_sample"+name):
         bias = conv(x, output_depth = second_depth, filter_size = 1, stride = stride, name = "-bias", relu = False)
         first = separable_conv(x, output_depth = first_depth, name = "-first", relu_on_entry = True)
@@ -58,7 +58,7 @@ def down_sample(x, first_depth, second_depth, stride, keep_dropout, train_phase,
         pool = tf.nn.max_pool(second, ksize=[1, 3, 3, 1], strides=[1, stride, stride, 1], padding='SAME')            
         return tf.add(bias, pool)
 
-def feature_select(x, keep_dropout, train_phase, name):
+def feature_select(x, train_phase, name):
     with tf.variable_scope("-feature_select" + name):
         depth = x.get_shape().as_list()[3]    
         feature = x
@@ -66,59 +66,62 @@ def feature_select(x, keep_dropout, train_phase, name):
             feature = separable_conv(feature, output_depth = depth, name = "-feature_"+str(k), relu_on_entry = True)
         return tf.add(x, feature)
 
-def network(x, keep_dropout, train_phase):
+def alexnet(x, train_phase, task):
     with tf.variable_scope("EntryFlow"):
         step1 = conv(x, output_depth = 32, filter_size = 3, stride = 2, relu = True, name = "-1")
         step2 = conv(step1, output_depth = 64, filter_size = 3, stride = 1, relu = True, name = "-2")        
-        step3 = down_sample(step2, first_depth = 128, second_depth = 128, stride = 2, keep_dropout = keep_dropout, train_phase = train_phase, name = "-3")
-        step4 = down_sample(step3, first_depth = 256, second_depth = 256, stride = 2, keep_dropout = keep_dropout, train_phase = train_phase, name = "-4")
-        step5 = down_sample(step4, first_depth = 728, second_depth = 728, stride = 1, keep_dropout = keep_dropout, train_phase = train_phase, name = "-5")
+        step3 = down_sample(step2, first_depth = 128, second_depth = 128, stride = 2, train_phase = train_phase, name = "-3")
+        step4 = down_sample(step3, first_depth = 256, second_depth = 256, stride = 2, train_phase = train_phase, name = "-4")
 
     with tf.variable_scope("MiddleFlow"):
+        step5 = down_sample(step4, first_depth = 400, second_depth = 400, stride = 1, train_phase = train_phase, name = "-5")        
         features = step5
         for k in range(8):
-            features = feature_select(features, keep_dropout, train_phase, "-"+str(k))
-
-    with tf.variable_scope("ObjectRecognition"):
-        domain1 = down_sample(features, first_depth = 728, second_depth = 1024, stride = 1, keep_dropout = keep_dropout, train_phase = train_phase, name = "-1")
-        domain2 = separable_conv(domain1, output_depth = 1536, name = "-2", relu_on_entry = False)
-        domain3 = separable_conv(domain2, output_depth = 2048, name = "-3", relu_on_entry = False)
-        domain4 = separable_conv(domain3, output_depth = 175, name = "-4", relu_on_entry = False)
-        objects = tf.reduce_mean(domain4, axis = [1,2])
+            features = feature_select(features, train_phase, "-1"+str(k))
+        features = tf.nn.dropout(features, keep_dropout)                            
+        domain1 = down_sample(features, first_depth = 400, second_depth = 1024, stride = 1, train_phase = train_phase, name = "-1")            
 
     with tf.variable_scope("SceneRecognition"):
-        domain1 = down_sample(features, first_depth = 728, second_depth = 1024, stride = 1, keep_dropout = keep_dropout, train_phase = train_phase, name = "-1")
-        domain2 = separable_conv(domain1, output_depth = 1536, name = "-2", relu_on_entry = False)
-        domain3 = separable_conv(domain2, output_depth = 2048, name = "-3", relu_on_entry = False)
+        domain1 = tf.nn.dropout(domain1, keep_dropout)                
+        domain3 = separable_conv(domain1, output_depth = 1536, name = "-2", relu_on_entry = False)
+        #domain3 = separable_conv(domain2, output_depth = 2048, name = "-3", relu_on_entry = False)
+        domain3 = tf.nn.dropout(domain3, keep_dropout)        
         domain4 = separable_conv(domain3, output_depth = 100, name = "-4", relu_on_entry = False)
         scenes = tf.reduce_mean(domain4, axis = [1,2])
+        return scenes
 
-    return [scenes, objects]
-    
 # tf Graph input
-x1 = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
-x2 = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
-y1 = tf.placeholder(tf.int64, None)
-y2 = tf.placeholder(tf.int64, None)
+x = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
+y = tf.placeholder(tf.int64, None)
 keep_dropout = tf.placeholder(tf.float32)
 train_phase = tf.placeholder(tf.bool)
-x = tf.concat([x1, x2], axis = 0)
 
-logits = network(x, keep_dropout, train_phase)
-logits1 = logits[0][0:batch_size]
-logits2 = logits[1][batch_size:(2*batch_size)]
-loss = (tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y1, logits=logits1)) +
-        tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y2, logits=logits2)))
-accuracy1 = [tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits1, y1, 1), tf.float32)), tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits2, y2, 1), tf.float32))]
-accuracy5 = [tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits1, y1, 5), tf.float32)), tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits2, y2, 5), tf.float32))]
-train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
+# Construct model
+logits = alexnet(x, keep_dropout, train_phase)
+
+# Define loss and optimizer
+regularization_loss = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+evaluation_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits))
+loss = evaluation_loss + regularization_loss
+train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)#, var_list = transfer_list)
+
+# Evaluate model
+values = tf.nn.softmax(logits)
+accuracy1 = tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits, y, 1), tf.float32))
+accuracy5 = tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits, y, 5), tf.float32))
 
 # define initialization
 init = tf.global_variables_initializer()
 
 # define saver
+val_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, "EntryFlow") + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, "SceneRecognition")
 saver = tf.train.Saver()
 restorer = saver
+#restorer = tf.train.Saver(val_list)
+
+# define summary writer
+train_writer = tf.summary.FileWriter('logs/' + experiment + 'train', tf.get_default_graph());
+val_writer = tf.summary.FileWriter('logs/' + experiment + 'val', tf.get_default_graph());
 
 def initialize(sess):
     sess.run(init)            
@@ -126,83 +129,98 @@ def initialize(sess):
         restorer.restore(sess, start_from)
 
 def train(sess):
+    # Initialization
     step = 0
     
     while step < training_iters:
-        images_batch1, labels_batch1 = scene_loader_train.next_batch(batch_size)
-        images_batch2, labels_batch2 = obj_loader_train.next_batch(batch_size)                
+        # Load a batch of training data
+        images_batch, labels_batch = loader_train.next_batch(batch_size)
 
         if step % step_display == 0:
             print('[%s]:' %(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5], feed_dict={x1: images_batch1, x2: images_batch2, y1: labels_batch1, y2: labels_batch2, keep_dropout: 1., train_phase: False}) 
-            print("-Iter " + str(step) + ", Training Loss= " + str(l) + ", Accuracy Top1 = " + str(acc1) + ", Top5 = " + str(acc5))
-            val_images_batch1, val_labels_batch1 = scene_loader_val.next_batch(batch_size)
-            val_images_batch2, val_labels_batch2 = obj_loader_val.next_batch(batch_size)
-            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5],
-                                                     feed_dict={x1: val_images_batch1, x2: val_images_batch2, y1: val_labels_batch1, y2: val_labels_batch2, keep_dropout: 1., train_phase: False}) 
-            print("-Iter " + str(step) + ", Validation Loss= " + str(l) + ", Accuracy Top1 = " + str(acc1) + ", Top5 = " + str(acc5))
             
-        sess.run(train_optimizer, feed_dict={x1: images_batch1, x2: images_batch2, y1: labels_batch1, y2: labels_batch2, keep_dropout: dropout, train_phase: True})
+            # Calculate batch loss and accuracy on training set
+            l, acc1, acc5, reg, eval_loss = sess.run([loss, accuracy1, accuracy5, regularization_loss, evaluation_loss],
+                                                          feed_dict={x: images_batch, y: labels_batch, keep_dropout: dropout, train_phase: False}) 
+            print("-Iter " + str(step) +
+                  ", Training Loss= " + "{:.6f}".format(l) +
+                  ", Accuracy Top1 = " + "{:.4f}".format(acc1) +
+                  ", Top5 = " + "{:.4f}".format(acc5) +
+                  ", Evaluation Loss = " + "{:.4f}".format(eval_loss) +
+                  ", Regularization Loss = " + "{:.4f}".format(reg))
+            
+            # Calculate batch loss and accuracy on validation set
+            images_batch_val, labels_batch_val = loader_val.next_batch(batch_size)    
+            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5], feed_dict={x: images_batch_val, y: labels_batch_val, keep_dropout: 1., train_phase: False}) 
+            print("-Iter " + str(step) + ", Validation Loss= " + \
+                  "{:.6f}".format(l) + ", Accuracy Top1 = " + \
+                  "{:.4f}".format(acc1) + ", Top5 = " + \
+                  "{:.4f}".format(acc5))
+            
+        # Run optimization op (backprop)
+        sess.run(train_optimizer, feed_dict={x: images_batch, y: labels_batch, keep_dropout: dropout, train_phase: True})
             
         step += 1
                 
+        # Save model
         if step % step_save == 0:
             saver.save(sess, path_save, global_step=step)            
             print("Model saved at Iter %d !" %(step))
             validate(sess)
-            #evaluate(sess)
+#            evaluate(sess)
             
+    train_writer.close()
+    val_writer.close()
     print("Optimization Finished!")
 
 def validate(sess):
     # Evaluate on the whole validation set
     print('Evaluation on the whole validation set...')
-    acc1_total = np.array([0., 0.])
-    acc5_total = np.array([0., 0.])
-    scene_loader_val.reset()
-    obj_loader_val.reset()    
+    acc1_total = 0.
+    acc5_total = 0.
+    loader_val.reset()
     
     i = 0
-    while i < scene_loader_val.size():
-        if i + batch_size < scene_loader_val.size():
+    while i < loader_val.size():
+        if i + batch_size < loader_val.size():
             size = batch_size
         else:
-            size = scene_loader_val.size() - i
+            size = loader_val.size() - i
         i += size
-        val_images_batch1, val_labels_batch1 = scene_loader_val.next_batch(batch_size)
-        val_images_batch2, val_labels_batch2 = obj_loader_val.next_batch(batch_size)        
-        acc1, acc5 = sess.run([accuracy1, accuracy5], feed_dict={x1: val_images_batch1, x2: val_images_batch2, y1: val_labels_batch1, y2: val_labels_batch2, keep_dropout: 1., train_phase: False})
-        acc1_total += np.array(acc1) * size
-        acc5_total += np.array(acc5) * size
-        
-    acc1_total /= scene_loader_val.size()
-    acc5_total /= scene_loader_val.size()
-    print('Validation Finished! ', 'Accuracy Top1 = ' + str(acc1_total) + ", Top5 = " + str(acc5_total))
+        images_batch, labels_batch = loader_val.next_batch(size)    
+        acc1, acc5 = sess.run([accuracy1, accuracy5], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
+        acc1_total += acc1 * size
+        acc5_total += acc5 * size
+    acc1_total /= loader_val.size()
+    acc5_total /= loader_val.size()
+    print('Validation Finished! ', 'Accuracy Top1 = ' + "{:.4f}".format(acc1_total) + ", Top5 = " + "{:.4f}".format(acc5_total))
 
-# def evaluate(sess, loader_test, task_index):
-#     print('Evaluation on the whole test set...')
-#     predictions = []
-#     i = 0
-#     while i < loader_test.size():
-#         if i + batch_size < loader_test.size():
-#             size = batch_size
-#         else:
-#             size = loader_test.size() - i
-#         i += size
-#         images_batch, labels_batch = loader_test.next_batch(size)    
-#         preds = sess.run(indexes[task_index], feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
-#         predictions = predictions + [x[0] for x in preds]
-#     print(predictions)    
+def evaluate(sess):
+    print('Evaluation on the whole test set...')
+    predictions = []
+    i = 0
+    while i < loader_test.size():
+        if i + batch_size < loader_test.size():
+            size = batch_size
+        else:
+            size = loader_test.size() - i
+        i += size
+        images_batch, labels_batch = loader_test.next_batch(size)    
+        preds = sess.run(values, feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
+        predictions = predictions + [x for x in preds]
+    print(predictions)
     
 def train_network():
     # Launch the graph
     with tf.Session() as sess:        
         initialize(sess)
         train(sess)
+#        validate(sess)
+#        evaluate(sess)
 
 opt_data_train = {
     'data_root': '../../data/images/',
-    'data_list': '../../data/obj_train.txt',
+    'data_list': '../../data/full_obj_train.txt',
     'load_size': load_size,
     'fine_size': fine_size,
     'data_mean': data_mean,
@@ -210,7 +228,7 @@ opt_data_train = {
 }
 opt_data_val = {
     'data_root': '../../data/images/',
-    'data_list': '../../data/obj_val.txt',
+    'data_list': '../../data/full_obj_val.txt',
     'load_size': load_size,
     'fine_size': fine_size,
     'data_mean': data_mean,
@@ -218,16 +236,16 @@ opt_data_val = {
 }
 opt_data_test = {
     'data_root': '../../data/images/',
-    'data_list': '../../data/obj_val.txt',
+    'data_list': '../../data/full_obj_val.txt',
     'load_size': load_size,
     'fine_size': fine_size,
     'data_mean': data_mean,
     'phase': 'evaluation',
 }        
-obj_loader_train = DataLoaderDisk(**opt_data_train)
-obj_loader_val = DataLoaderDisk(**opt_data_val)
-obj_loader_test = DataLoaderDisk(**opt_data_test)
-scene_loader_train = DataLoaderH5(**opt_data_train)
-scene_loader_val = DataLoaderH5(**opt_data_val)
-scene_loader_test = DataLoaderH5(**opt_data_test)        
+# loader_train = DataLoaderDisk(**opt_data_train)
+# loader_val = DataLoaderDisk(**opt_data_val)
+# loader_test = DataLoaderDisk(**opt_data_test)
+loader_train = DataLoaderH5(**opt_data_train)
+loader_val = DataLoaderH5(**opt_data_val)
+loader_test = DataLoaderH5(**opt_data_test)        
 train_network()
