@@ -33,24 +33,29 @@ class DataLoaderH5(object):
         self._idx = 0
 
     def next_batch(self, batch_size):
+        if self.phase == 'training':
+            crop_width = np.random.random_integers(int(self.fine_size*1/2), self.fine_size)
+            crop_height = np.random.random_integers(int(self.fine_size*1/2), self.fine_size)
+        else:
+            crop_width = self.fine_size
+            crop_height = self.fine_size
         labels_batch = np.zeros(batch_size)
-        images_batch = np.zeros((batch_size, self.fine_size, self.fine_size, 3))
-
+        images_batch = np.zeros((batch_size, crop_height, crop_width, 3))
         for i in range(batch_size):
             index = self.perm[self._idx]
             image = np.array(self.list_im[index])
-            image = image.astype(np.float32)/255. - self.data_mean
+            image = image.astype(np.float32)/255. - self.data_mean            
             if self.phase == 'training':
                 flip = np.random.random_integers(0, 1)
                 if flip>0:
                     image = image[:,::-1,:]
-                offset_h = np.random.random_integers(0, self.load_size-self.fine_size)
-                offset_w = np.random.random_integers(0, self.load_size-self.fine_size)
+                offset_h = np.random.random_integers(0, self.load_size-crop_height)
+                offset_w = np.random.random_integers(0, self.load_size-crop_width)
             else:
-                offset_h = (self.load_size-self.fine_size)//2
-                offset_w = (self.load_size-self.fine_size)//2
-
-            image = image[offset_h:offset_h+self.fine_size, offset_w:offset_w+self.fine_size, :]
+                offset_h = (self.load_size-crop_height)//2
+                offset_w = (self.load_size-crop_width)//2
+                
+            image = image[offset_h:offset_h+crop_height, offset_w:offset_w+crop_width, :]
             images_batch[i, ...] = image
             labels_batch[i, ...] = self.list_lab[index]
             self._idx += 1

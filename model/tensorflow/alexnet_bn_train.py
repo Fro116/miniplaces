@@ -7,8 +7,9 @@ from DataLoader import *
 # Dataset Parameters
 batch_size = 50
 load_size = 128
-fine_size = 112
+fine_size = 128
 c = 3
+#data_mean = np.asarray([0.45834960097,0.44674252445,0.41352266842])
 data_mean = np.load("./training_mean.npy")
 experiment = 'binary'
 
@@ -19,7 +20,7 @@ training_iters = 500000
 step_display = 50
 step_save = 4000
 path_save = './models/alexnet_bn'
-start_from = './models/xceptionE/alexnet_bn-20000'
+start_from = './models/xceptionL/alexnet_bn-4000'
 regularization_scale = 0.#00001
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
@@ -91,7 +92,7 @@ def alexnet(x, train_phase, task):
         return scenes
 
 # tf Graph input
-x = tf.placeholder(tf.float32, [None, fine_size, fine_size, c])
+x = tf.placeholder(tf.float32, [None, None, None, c])
 y = tf.placeholder(tf.int64, None)
 keep_dropout = tf.placeholder(tf.float32)
 train_phase = tf.placeholder(tf.bool)
@@ -214,6 +215,7 @@ def train_network():
     # Launch the graph
     with tf.Session() as sess:        
         initialize(sess)
+        validate(sess)        
         train(sess)
 #        validate(sess)
 #        evaluate(sess)
