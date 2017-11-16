@@ -8,6 +8,7 @@ from sklearn.cluster import KMeans
 
 train_file = h5py.File('../../data/miniplaces_128_train.h5', "r")
 val_file = h5py.File('../../data/miniplaces_128_val.h5', "r")
+test_file = h5py.File('../../data/miniplaces_128_test.h5', "r")
         
 # loading data from .h5
 class DataLoaderH5(object):
@@ -20,9 +21,12 @@ class DataLoaderH5(object):
         if self.phase == 'training':
             self.list_im = train_file['images']
             self.list_lab = train_file['labels']
-        else:
+        elif self.phase == 'validation':
             self.list_im = val_file['images']
             self.list_lab = val_file['labels']
+        else:
+            self.list_im = test_file['images']
+            self.list_lab = test_file['labels']            
         self.num = len(self.list_im)
         self.perm = [x for x in range(self.num)]
         print('# Images found:', self.num)
@@ -34,8 +38,8 @@ class DataLoaderH5(object):
 
     def next_batch(self, batch_size):
         if self.phase == 'training':
-            crop_width = np.random.random_integers(int(self.fine_size*1/2), self.fine_size)
-            crop_height = np.random.random_integers(int(self.fine_size*1/2), self.fine_size)
+            crop_width = np.random.random_integers(int(self.fine_size*1/4), self.fine_size)
+            crop_height = np.random.random_integers(int(self.fine_size*1/4), self.fine_size)
         else:
             crop_width = self.fine_size
             crop_height = self.fine_size

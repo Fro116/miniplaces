@@ -51,5 +51,14 @@ if __name__=='__main__':
     		'data_list': '../../data/val.txt'
 	}
 
-	createH5(params_train)
-	createH5(params_val)
+	params_test = {
+		'name': 'miniplaces',
+		'split': 'test',
+		'img_resize': 128,
+		'data_root': '../../data/images/',	# MODIFY PATH ACCORDINGLY
+    		'data_list': '../../data/test.txt'
+	}        
+
+#	createH5(params_train)
+#	createH5(params_val)
+	createH5(params_test)

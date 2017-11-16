@@ -20,7 +20,7 @@ training_iters = 500000
 step_display = 50
 step_save = 4000
 path_save = './models/alexnet_bn'
-start_from = './models/xceptionL/alexnet_bn-4000'
+start_from = './models/xceptionQ/alexnet_bn-76000'
 regularization_scale = 0.#00001
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
@@ -207,42 +207,38 @@ def evaluate(sess):
             size = loader_test.size() - i
         i += size
         images_batch, labels_batch = loader_test.next_batch(size)    
-        preds = sess.run(values, feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
+        preds = sess.run(logits, feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
         predictions = predictions + [x for x in preds]
-    print(predictions)
+    np.set_printoptions(threshold=np.inf)        
+    print(np.array(predictions))
     
 def train_network():
     # Launch the graph
     with tf.Session() as sess:        
         initialize(sess)
-        validate(sess)        
-        train(sess)
+        evaluate(sess)        
+#        validate(sess)        
+#        train(sess)
 #        validate(sess)
 #        evaluate(sess)
 
 opt_data_train = {
-    'data_root': '../../data/images/',
-    'data_list': '../../data/full_obj_train.txt',
     'load_size': load_size,
     'fine_size': fine_size,
     'data_mean': data_mean,
     'phase': 'training',
 }
 opt_data_val = {
-    'data_root': '../../data/images/',
-    'data_list': '../../data/full_obj_val.txt',
     'load_size': load_size,
     'fine_size': fine_size,
     'data_mean': data_mean,
     'phase': 'validation',
 }
 opt_data_test = {
-    'data_root': '../../data/images/',
-    'data_list': '../../data/full_obj_val.txt',
     'load_size': load_size,
     'fine_size': fine_size,
     'data_mean': data_mean,
-    'phase': 'evaluation',
+    'phase': 'testing',
 }        
 # loader_train = DataLoaderDisk(**opt_data_train)
 # loader_val = DataLoaderDisk(**opt_data_val)
