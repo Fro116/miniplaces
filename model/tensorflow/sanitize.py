@@ -50,12 +50,13 @@ def process():
     for row in range(10000):
         k = 10
         ind = np.argpartition(vals[row,:], -k)[-k:]
+        ind = sorted(ind, key = lambda x: vals[row, x], reverse = True)
         line = paths[row]
         for i in range(k):
-            line = line + " " + str(ind[k-1-i])
+            line = line + " " + str(ind[i])
         print(line)
 
 
 init("tmp4")
 accuracy()
-#process()
+process()

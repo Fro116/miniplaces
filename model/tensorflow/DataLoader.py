@@ -48,11 +48,17 @@ class DataLoaderH5(object):
         for i in range(batch_size):
             index = self.perm[self._idx]
             image = np.array(self.list_im[index])
-            image = image.astype(np.float32)/255. - self.data_mean            
+            image = image.astype(np.float32)/255. - self.data_mean
             if self.phase == 'training':
                 flip = np.random.random_integers(0, 1)
                 if flip>0:
                     image = image[:,::-1,:]
+                gray = np.random.random_integers(0, 1)
+                if gray>0:
+                    gray = np.dot(image[...,:3], [0.299, 0.587, 0.114])
+                    image[:, :, 0] = gray
+                    image[:, :, 1] = gray
+                    image[:, :, 2] = gray                    
                 offset_h = np.random.random_integers(0, self.load_size-crop_height)
                 offset_w = np.random.random_integers(0, self.load_size-crop_width)
             else:
