@@ -58,13 +58,15 @@ class DataLoaderH5(object):
                     gray = np.dot(image[...,:3], [0.299, 0.587, 0.114])
                     image[:, :, 0] = gray
                     image[:, :, 1] = gray
-                    image[:, :, 2] = gray                    
+                    image[:, :, 2] = gray
+                darken = np.random.random_integers(0, 1)
+                if darken>0:
+                    image = image/2
                 offset_h = np.random.random_integers(0, self.load_size-crop_height)
                 offset_w = np.random.random_integers(0, self.load_size-crop_width)
             else:
                 offset_h = (self.load_size-crop_height)//2
-                offset_w = (self.load_size-crop_width)//2
-                
+                offset_w = (self.load_size-crop_width)//2                
             image = image[offset_h:offset_h+crop_height, offset_w:offset_w+crop_width, :]
             images_batch[i, ...] = image
             labels_batch[i, ...] = self.list_lab[index]

@@ -15,12 +15,12 @@ experiment = 'binary'
 
 # Training Parameters
 learning_rate = 0.001
-dropout = 0.1 # Dropout, probability to keep units
+dropout = 1. #1/9 # Dropout, probability to keep units
 training_iters = 500000
 step_display = 50
-step_save = 4000
+step_save = 5000
 path_save = './models/alexnet_bn'
-start_from = './models/xceptionQ/alexnet_bn-76000'
+start_from = ''#'./models/alexnet_bn-8800'
 regularization_scale = 0.#00001
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
@@ -75,17 +75,16 @@ def alexnet(x, train_phase, task):
         step4 = down_sample(step3, first_depth = 256, second_depth = 256, stride = 2, train_phase = train_phase, name = "-4")
 
     with tf.variable_scope("MiddleFlow"):
-        step5 = down_sample(step4, first_depth = 400, second_depth = 400, stride = 1, train_phase = train_phase, name = "-5")        
+        step5 = down_sample(step4, first_depth = 256, second_depth = 256, stride = 1, train_phase = train_phase, name = "-5")        
         features = step5
         for k in range(8):
             features = feature_select(features, train_phase, "-1"+str(k))
         features = tf.nn.dropout(features, keep_dropout)                            
-        domain1 = down_sample(features, first_depth = 400, second_depth = 1024, stride = 1, train_phase = train_phase, name = "-1")            
+        domain1 = down_sample(features, first_depth = 256, second_depth = 512, stride = 1, train_phase = train_phase, name = "-1")            
 
     with tf.variable_scope("SceneRecognition"):
         domain1 = tf.nn.dropout(domain1, keep_dropout)                
-        domain3 = separable_conv(domain1, output_depth = 1536, name = "-2", relu_on_entry = False)
-        #domain3 = separable_conv(domain2, output_depth = 2048, name = "-3", relu_on_entry = False)
+        domain3 = separable_conv(domain1, output_depth = 1024, name = "-2", relu_on_entry = False)
         domain3 = tf.nn.dropout(domain3, keep_dropout)        
         domain4 = separable_conv(domain3, output_depth = 100, name = "-4", relu_on_entry = False)
         scenes = tf.reduce_mean(domain4, axis = [1,2])
@@ -216,9 +215,9 @@ def train_network():
     # Launch the graph
     with tf.Session() as sess:        
         initialize(sess)
-        evaluate(sess)        
-#        validate(sess)        
-#        train(sess)
+#        evaluate(sess)        
+        validate(sess)        
+        train(sess)
 #        validate(sess)
 #        evaluate(sess)
 
