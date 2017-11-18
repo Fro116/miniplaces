@@ -15,12 +15,12 @@ experiment = 'binary'
 
 # Training Parameters
 learning_rate = 0.001
-dropout = 0.1 # Dropout, probability to keep units
+dropout = 1. # Dropout, probability to keep units
 training_iters = 500000
 step_display = 50
-step_save = 4000
+step_save = 500
 path_save = './models/alexnet_bn'
-start_from = './models/xceptionQ/alexnet_bn-76000'
+start_from = './models/xceptionZ/alexnet_bn-1500'
 regularization_scale = 0.#00001
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
@@ -152,11 +152,13 @@ def train(sess):
             
             # Calculate batch loss and accuracy on validation set
             images_batch_val, labels_batch_val = loader_val.next_batch(batch_size)    
-            l, acc1, acc5 = sess.run([loss, accuracy1, accuracy5], feed_dict={x: images_batch_val, y: labels_batch_val, keep_dropout: 1., train_phase: False}) 
-            print("-Iter " + str(step) + ", Validation Loss= " + \
-                  "{:.6f}".format(l) + ", Accuracy Top1 = " + \
-                  "{:.4f}".format(acc1) + ", Top5 = " + \
-                  "{:.4f}".format(acc5))
+            l, acc1, acc5, reg, eval_loss = sess.run([loss, accuracy1, accuracy5, regularization_loss, evaluation_loss], feed_dict={x: images_batch_val, y: labels_batch_val, keep_dropout: 1., train_phase: False})
+            print("-Iter " + str(step) +
+                  ", Validation Loss= " + "{:.6f}".format(l) +
+                  ", Accuracy Top1 = " + "{:.4f}".format(acc1) +
+                  ", Top5 = " + "{:.4f}".format(acc5) +
+                  ", Evaluation Loss = " + "{:.4f}".format(eval_loss) +
+                  ", Regularization Loss = " + "{:.4f}".format(reg))            
             
         # Run optimization op (backprop)
         sess.run(train_optimizer, feed_dict={x: images_batch, y: labels_batch, keep_dropout: dropout, train_phase: True})
@@ -207,7 +209,7 @@ def evaluate(sess):
             size = loader_test.size() - i
         i += size
         images_batch, labels_batch = loader_test.next_batch(size)    
-        preds = sess.run(logits, feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
+        preds = sess.run(values, feed_dict={x: images_batch, y: labels_batch, keep_dropout: 1., train_phase: False})
         predictions = predictions + [x for x in preds]
     np.set_printoptions(threshold=np.inf)        
     print(np.array(predictions))
@@ -216,9 +218,9 @@ def train_network():
     # Launch the graph
     with tf.Session() as sess:        
         initialize(sess)
-        evaluate(sess)        
-#        validate(sess)        
-#        train(sess)
+#        evaluate(sess)        
+        validate(sess)        
+        train(sess)
 #        validate(sess)
 #        evaluate(sess)
 

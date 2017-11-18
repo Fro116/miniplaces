@@ -2,13 +2,13 @@ import numpy as np
 
 vals = np.zeros([10000, 100])
     
-def init(filename):
+def init(filename, scale):
     with open(filename, "r") as f:
         row = 0
         col = 0    
         for line in f:
             for val in line.split():
-                vals[row, col] = val
+                vals[row, col] += float(val)*scale
                 col += 1
                 if col == 100:
                     col = 0
@@ -36,10 +36,10 @@ def accuracy():
         if guesses[row, correct[row]] == 1:
             acc += 1
         else:
-            print(paths[row] + " " + str(correct[row]));
+            #print(paths[row] + " " + str(correct[row]));
             missed[correct[row]] += 1
-    print(sorted(missed))
-    print(acc)
+    #print(sorted(missed))
+    return acc
 
 def process():
     paths = []
@@ -48,7 +48,7 @@ def process():
             path, lab =line.rstrip().split(' ')
             paths.append(path)
     for row in range(10000):
-        k = 10
+        k = 5
         ind = np.argpartition(vals[row,:], -k)[-k:]
         ind = sorted(ind, key = lambda x: vals[row, x], reverse = True)
         line = paths[row]
@@ -56,7 +56,10 @@ def process():
             line = line + " " + str(ind[i])
         print(line)
 
-
-init("tmp4")
-accuracy()
-process()
+p = 0.2     
+init("tmp2", 1)
+init("tmp4", 1)
+#init("tmp6", p)
+#init("tmp8", p)        
+print(accuracy())
+#process()

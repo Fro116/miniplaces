@@ -8,7 +8,7 @@ from sklearn.cluster import KMeans
 
 train_file = h5py.File('../../data/miniplaces_128_train.h5', "r")
 val_file = h5py.File('../../data/miniplaces_128_val.h5', "r")
-test_file = h5py.File('../../data/miniplaces_128_test.h5', "r")
+test_file = h5py.File('../../data/miniplaces_128_val.h5', "r")
         
 # loading data from .h5
 class DataLoaderH5(object):
@@ -38,17 +38,23 @@ class DataLoaderH5(object):
 
     def next_batch(self, batch_size):
         if self.phase == 'training':
-            crop_width = np.random.random_integers(int(self.fine_size*1/4), self.fine_size)
-            crop_height = np.random.random_integers(int(self.fine_size*1/4), self.fine_size)
+            crop_width = np.random.random_integers(int(self.fine_size*3/4), self.fine_size)
+            crop_height = np.random.random_integers(int(self.fine_size*3/4), self.fine_size)
         else:
             crop_width = self.fine_size
             crop_height = self.fine_size
+
         labels_batch = np.zeros(batch_size)
         images_batch = np.zeros((batch_size, crop_height, crop_width, 3))
         for i in range(batch_size):
             index = self.perm[self._idx]
             image = np.array(self.list_im[index])
             image = image.astype(np.float32)/255. - self.data_mean
+#            gray = np.dot(image[...,:3], [0.299, 0.587, 0.114])
+#            image[:, :, 0] = gray
+#            image[:, :, 1] = gray
+#            image[:, :, 2] = gray                                
+#            image = image[:, ::-1, :]
             if self.phase == 'training':
                 flip = np.random.random_integers(0, 1)
                 if flip>0:
