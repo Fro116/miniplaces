@@ -56,10 +56,11 @@ def process():
             line = line + " " + str(ind[i])
         print(line)
 
-p = 0.2     
-init("tmp2", 1)
-init("tmp4", 1)
+#p = 0.2
+base = "evals/test/Z3/"
+init(base+"tmp2", 1)
+init(base+"tmp4", 1)
 #init("tmp6", p)
 #init("tmp8", p)        
-print(accuracy())
-#process()
+#print(accuracy())
+process()

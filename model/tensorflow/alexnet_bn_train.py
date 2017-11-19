@@ -18,9 +18,9 @@ learning_rate = 0.001
 dropout = 1. # Dropout, probability to keep units
 training_iters = 500000
 step_display = 50
-step_save = 500
+step_save = 2000
 path_save = './models/alexnet_bn'
-start_from = './models/xceptionZ/alexnet_bn-1500'
+start_from = './models/xceptionZ2/alexnet_bn-8000'
 regularization_scale = 0.#00001
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
@@ -104,7 +104,9 @@ logits = alexnet(x, keep_dropout, train_phase)
 regularization_loss = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
 evaluation_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=logits))
 loss = evaluation_loss + regularization_loss
-train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)#, var_list = transfer_list)
+#transfer_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, "SceneRecognition") + tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, "MiddleFlow/-down_sample-1")
+transfer_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, "SceneRecognition/-separable_conv-4")
+train_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss, var_list = transfer_list)
 
 # Evaluate model
 values = tf.nn.softmax(logits)

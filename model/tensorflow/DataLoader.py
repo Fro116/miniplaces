@@ -8,7 +8,7 @@ from sklearn.cluster import KMeans
 
 train_file = h5py.File('../../data/miniplaces_128_train.h5', "r")
 val_file = h5py.File('../../data/miniplaces_128_val.h5', "r")
-test_file = h5py.File('../../data/miniplaces_128_val.h5', "r")
+test_file = h5py.File('../../data/miniplaces_128_test.h5', "r")
         
 # loading data from .h5
 class DataLoaderH5(object):
