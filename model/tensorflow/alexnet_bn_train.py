@@ -1,3 +1,4 @@
+import sys
 import os, datetime
 import numpy as np
 import tensorflow as tf
@@ -12,13 +13,13 @@ c = 3
 data_mean = np.load("./training_mean.npy")
 
 # Training Parameters
-learning_rate = 0.001
-dropout = 1. 
-training_iters = 500000
+learning_rate = 0#0.001
+dropout = 1.#1/9
+training_iters = 1000
 step_display = 50
-step_save = 5000
-path_save = './models/alexnet_bn'
-start_from = './models/xceptionZ2/alexnet_bn-8000'
+step_save = 1000
+#path_save = './models/alexnet_bn'
+start_from = ''#'./models/xceptionS/alexnet_bn-36000'
 regularization_scale = 0.
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
@@ -114,10 +115,8 @@ accuracy5 = tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits, y, 5), tf.float32))
 init = tf.global_variables_initializer()
 
 # define saver
-val_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, "EntryFlow") + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, "SceneRecognition")
-saver = tf.train.Saver()
+saver = tf.train.Saver(max_to_keep = 50)
 restorer = saver
-#restorer = tf.train.Saver(val_list)
 
 def initialize(sess):
     sess.run(init)            
@@ -211,10 +210,13 @@ def train_network():
     # Launch the graph
     with tf.Session() as sess:        
         initialize(sess)
-#        evaluate(sess)        
-        validate(sess)        
-        train(sess)
-
+        evaluate(sess)        
+#        validate(sess)
+#        learning_rate = 0.001
+#        train(sess)
+#        learning_rate = 0.0001
+#        train(sess)
+        
 opt_data_train = {
     'load_size': load_size,
     'fine_size': fine_size,
@@ -235,5 +237,13 @@ opt_data_test = {
 }        
 loader_train = DataLoaderH5(**opt_data_train)
 loader_val = DataLoaderH5(**opt_data_val)
-loader_test = DataLoaderH5(**opt_data_test)        
-train_network()
+loader_test = DataLoaderH5(**opt_data_test)
+#train_network()
+
+for k in range(10):
+    step = str(5000*(k+1))
+    start_from = './models/tuned2/tuned-'+str(k)+"-1000"
+    #start_from = './models/xceptionS3/alexnet_bn-'+str(step)
+    #path_save = './models/tuned-' + str(k)
+    sys.stdout = open('tmp'+str(k), 'w')
+    train_network()

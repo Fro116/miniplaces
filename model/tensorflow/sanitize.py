@@ -56,11 +56,42 @@ def process():
             line = line + " " + str(ind[i])
         print(line)
 
-#p = 0.2
-base = "evals/test/Z3/"
-init(base+"tmp2", 1)
-init(base+"tmp4", 1)
-#init("tmp6", p)
-#init("tmp8", p)        
+phase = "val"
+# base = "evals/"+phase+"/Z/"
+# init(base+"tmp2", 1)
+# init(base+"tmp4", 1)
+# base = "evals/"+phase+"/Z1/"
+# init(base+"tmp2", 1)
+# init(base+"tmp4", 1)
+# base = "evals/"+phase+"/Z2/"
+# init(base+"tmp2", 1)
+# init(base+"tmp4", 1)
+# base = "evals/"+phase+"/Z3/"
+# init(base+"tmp2", 1)
+# init(base+"tmp4", 1)
+#base = "evals/"+phase+"/Z4/"
+#init(base+"tmp2", 1)
+#init(base+"tmp4", 1)
 #print(accuracy())
-process()
+# base = "evals/"+phase+"/Z5/"
+# init(base+"tmp2", 1)
+# init(base+"tmp4", 1)
+# base = "evals/"+phase+"/Z6/"
+# init(base+"tmp2", 1)
+# init(base+"tmp4", 1)
+#base = ""
+#init(base+"tmp2", 1)
+#init(base+"tmp4", 1)
+#base = "evals/"+phase+"/S2/"
+#for k in range(10):
+#    name = base + "fil" + str(k)
+#    init(name, 1)
+#    print(accuracy())
+base = "evals/"+phase+"/S3/"
+for k in range(10):
+    for mod in ["", "r"]:
+        name = base + "fil" + mod + str(k)
+        init(name, 1)
+        print(accuracy())
+    
+#process()
