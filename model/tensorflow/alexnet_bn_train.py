@@ -13,13 +13,13 @@ c = 3
 data_mean = np.load("./training_mean.npy")
 
 # Training Parameters
-learning_rate = 0#0.001
-dropout = 1.#1/9
+learning_rate = 0.001
+dropout = 1#1/9
 training_iters = 1000
 step_display = 50
 step_save = 1000
-#path_save = './models/alexnet_bn'
-start_from = ''#'./models/xceptionS/alexnet_bn-36000'
+path_save = './models/alexnet_bn'
+start_from = './models/xceptionS3/alexnet_bn-50000'
 regularization_scale = 0.
 regularizer = tf.contrib.layers.l2_regularizer(regularization_scale);
 
@@ -115,7 +115,7 @@ accuracy5 = tf.reduce_mean(tf.cast(tf.nn.in_top_k(logits, y, 5), tf.float32))
 init = tf.global_variables_initializer()
 
 # define saver
-saver = tf.train.Saver(max_to_keep = 50)
+saver = tf.train.Saver(max_to_keep = 100)
 restorer = saver
 
 def initialize(sess):
@@ -210,6 +210,8 @@ def train_network():
     # Launch the graph
     with tf.Session() as sess:        
         initialize(sess)
+#        validate(sess)
+#        train(sess)
         evaluate(sess)        
 #        validate(sess)
 #        learning_rate = 0.001
@@ -241,9 +243,9 @@ loader_test = DataLoaderH5(**opt_data_test)
 #train_network()
 
 for k in range(10):
-    step = str(5000*(k+1))
-    start_from = './models/tuned2/tuned-'+str(k)+"-1000"
-    #start_from = './models/xceptionS3/alexnet_bn-'+str(step)
+    #step = str(5000*(k+1))
+    start_from = './models/tuned3/tuned-'+str(k)+"-1000"
+    #start_from = './models/xceptionS4/alexnet_bn-'+str(step)
     #path_save = './models/tuned-' + str(k)
     sys.stdout = open('tmp'+str(k), 'w')
     train_network()
